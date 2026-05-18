@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Piattaforma Corsi Online</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div id="app" class="app-container">
+        <!-- Navigation Bar -->
+        <nav class="navbar" id="navbar">
+            <div class="navbar-container">
+                <div class="navbar-brand">
+                    <i class="fas fa-graduation-cap"></i>
+                    <span>EduPlatform</span>
+                </div>
+                <ul class="navbar-menu" id="navbarMenu">
+                    <li><a href="#home">Home</a></li>
+                    <li><a href="#" id="navLogin">Login</a></li>
+                    <li><a href="#" id="navRegister">Registrati</a></li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- Landing Page -->
+        <div id="landingPage" class="page">
+            <section class="hero">
+                <div class="hero-content">
+                    <h1>Piattaforma Corsi Online</h1>
+                    <p>Scopri, impara e cresci con i nostri corsi di qualità</p>
+                    <div class="hero-buttons">
+                        <button class="btn btn-primary" id="btnHeroLogin">Accedi</button>
+                        <button class="btn btn-secondary" id="btnHeroRegister">Registrati</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="features">
+                <div class="feature-card">
+                    <i class="fas fa-book"></i>
+                    <h3>Corsi Completi</h3>
+                    <p>Accedi a una vasta gamma di corsi professionali</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-users"></i>
+                    <h3>Docenti Esperti</h3>
+                    <p>Impara da professionisti del settore</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-chart-line"></i>
+                    <h3>Traccia Progresso</h3>
+                    <p>Monitora il tuo avanzamento in tempo reale</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-certificate"></i>
+                    <h3>Certificati</h3>
+                    <p>Ottieni certificati al completamento dei corsi</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- Login Page -->
+        <div id="loginPage" class="page hidden">
+            <div class="auth-container">
+                <div class="auth-box">
+                    <h2>Accedi</h2>
+                    <form id="loginForm">
+                        <div class="form-group">
+                            <label for="loginUsername">Username</label>
+                            <input type="text" id="loginUsername" name="username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Password</label>
+                            <input type="password" id="loginPassword" name="password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Accedi</button>
+                    </form>
+                    <p class="auth-link">Non hai un account? <a href="#register">Registrati qui</a></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Registration Page -->
+        <div id="registrationPage" class="page hidden">
+            <div class="auth-container">
+                <div class="auth-box">
+                    <h2>Registrazione</h2>
+                    <form id="registrationForm">
+                        <div class="form-group">
+                            <label for="regFullName">Nome Completo</label>
+                            <input type="text" id="regFullName" name="full_name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="regUsername">Username</label>
+                            <input type="text" id="regUsername" name="username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="regEmail">Email</label>
+                            <input type="email" id="regEmail" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="regPassword">Password</label>
+                            <input type="password" id="regPassword" name="password" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="regRole">Ruolo</label>
+                            <select id="regRole" name="role" required>
+                                <option value="">-- Seleziona --</option>
+                                <option value="student">Studente</option>
+                                <option value="teacher">Docente</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Registrati</button>
+                    </form>
+                    <p class="auth-link">Hai già un account? <a href="#login">Accedi qui</a></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Student Dashboard -->
+        <div id="studentDashboard" class="page hidden">
+            <div class="dashboard-container">
+                <aside class="sidebar">
+                    <ul class="sidebar-menu">
+                        <li><a href="#" data-page="dashboard">Dashboard</a></li>
+                        <li><a href="#" data-page="courses">Catalogo Corsi</a></li>
+                        <li><a href="#" data-page="my-courses">I Miei Corsi</a></li>
+                        <li><a href="#" data-page="progress">Progresso</a></li>
+                        <li><a href="#" id="btnLogout">Logout</a></li>
+                    </ul>
+                </aside>
+                <main class="dashboard-content">
+                    <!-- Dashboard Summary -->
+                    <div id="dashboardSummary" class="dashboard-section">
+                        <h2>Benvenuto, <span id="userGreeting"></span></h2>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <h3>Corsi Iscritti</h3>
+                                <p id="statEnrolled" class="stat-value">0</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>In Progresso</h3>
+                                <p id="statProgress" class="stat-value">0</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Completati</h3>
+                                <p id="statCompleted" class="stat-value">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Courses Catalog -->
+                    <div id="coursesCatalog" class="dashboard-section hidden">
+                        <h2>Catalogo Corsi</h2>
+                        <div class="search-filters">
+                            <input type="text" id="searchCourses" placeholder="Cerca corsi...">
+                            <select id="filterCategory">
+                                <option value="">Tutte le Categorie</option>
+                            </select>
+                            <select id="filterDifficulty">
+                                <option value="">Tutti i Livelli</option>
+                                <option value="beginner">Principiante</option>
+                                <option value="intermediate">Intermedio</option>
+                                <option value="advanced">Avanzato</option>
+                            </select>
+                        </div>
+                        <div id="coursesList" class="courses-grid"></div>
+                    </div>
+
+                    <!-- My Courses -->
+                    <div id="myCourses" class="dashboard-section hidden">
+                        <h2>I Miei Corsi</h2>
+                        <div id="enrolledCoursesList" class="courses-grid"></div>
+                    </div>
+
+                    <!-- Progress Tracker -->
+                    <div id="progressTracker" class="dashboard-section hidden">
+                        <h2>Il Mio Progresso</h2>
+                        <div id="progressStats"></div>
+                    </div>
+                </main>
+            </div>
+        </div>
+
+        <!-- Teacher Dashboard -->
+        <div id="teacherDashboard" class="page hidden">
+            <div class="dashboard-container">
+                <aside class="sidebar">
+                    <ul class="sidebar-menu">
+                        <li><a href="#" data-page="teacher-dashboard">Dashboard</a></li>
+                        <li><a href="#" data-page="my-courses">I Miei Corsi</a></li>
+                        <li><a href="#" data-page="create-course">Crea Corso</a></li>
+                        <li><a href="#" data-page="students">Studenti</a></li>
+                        <li><a href="#" id="btnLogout">Logout</a></li>
+                    </ul>
+                </aside>
+                <main class="dashboard-content">
+                    <!-- Teacher Dashboard Summary -->
+                    <div id="teacherDashboardSummary" class="dashboard-section">
+                        <h2>Benvenuto Docente, <span id="teacherGreeting"></span></h2>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <h3>Corsi Creati</h3>
+                                <p id="teacherStatCourses" class="stat-value">0</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Studenti Iscritti</h3>
+                                <p id="teacherStatStudents" class="stat-value">0</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Valutazione Media</h3>
+                                <p id="teacherStatRating" class="stat-value">0.0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Create Course Form -->
+                    <div id="createCourseForm" class="dashboard-section hidden">
+                        <h2>Crea Nuovo Corso</h2>
+                        <form id="courseForm">
+                            <div class="form-group">
+                                <label>Titolo Corso</label>
+                                <input type="text" name="title" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Descrizione</label>
+                                <textarea name="description" rows="4" required></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Categoria</label>
+                                <input type="text" name="category" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Livello di Difficoltà</label>
+                                <select name="difficulty_level" required>
+                                    <option value="beginner">Principiante</option>
+                                    <option value="intermediate">Intermedio</option>
+                                    <option value="advanced">Avanzato</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Durata (ore)</label>
+                                <input type="number" name="duration_hours" min="0.5" step="0.5" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Crea Corso</button>
+                        </form>
+                    </div>
+                </main>
+            </div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
