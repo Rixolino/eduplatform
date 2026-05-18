@@ -96,6 +96,11 @@ void api_register(SOCKET client, const char *body) {
     send_json_response(client, 201, "{\"status\":\"success\",\"message\":\"User registered\"}");
 }
 
+// GET /api/users/profile (semplificato)
+void api_get_profile(SOCKET client) {
+    send_json_response(client, 200, "{\"id\":1,\"username\":\"demo_user\",\"email\":\"demo@example.com\",\"full_name\":\"Demo User\",\"role\":\"student\"}");
+}
+
 // POST /api/users/login (semplificato)
 void api_login(SOCKET client, const char *body) {
     send_json_response(client, 200, "{\"status\":\"success\",\"token\":\"demo-token-12345\"}");
@@ -125,6 +130,9 @@ void handle_request(SOCKET client, const char *request) {
         }
         else if (strcmp(path, "/api/users/login") == 0 && strcmp(method, "POST") == 0) {
             api_login(client, "");
+        }
+        else if (strcmp(path, "/api/users/profile") == 0 && strcmp(method, "GET") == 0) {
+            api_get_profile(client);
         }
         else {
             send_json_response(client, 404, "{\"error\":\"Not found\"}");
