@@ -603,6 +603,7 @@ void api_get_course_buddies(int client, int course_id) {
             json_add_string(jb, "full_name", (const char *)sqlite3_column_text(stmt, 2));
             json_add_double(jb, "progress_percentage", sqlite3_column_double(stmt, 3));
             json_end_object(jb);
+            json_append(jb, ",");
         }
         json_end_array(jb);
         json_end_object(jb);
@@ -794,6 +795,7 @@ void api_get_teacher_students(int client, const char *request) {
             json_add_double(jb, "progress_percentage", sqlite3_column_double(stmt, 5));
             json_add_string(jb, "status", (const char *)sqlite3_column_text(stmt, 6));
             json_end_object(jb);
+            json_append(jb, ",");
         }
 
         json_end_array(jb);
@@ -824,6 +826,7 @@ void api_get_paths(int client) {
             json_add_string(jb, "description", (const char *)sqlite3_column_text(stmt, 2));
             json_add_int(jb, "creator_id", sqlite3_column_int(stmt, 3));
             json_end_object(jb);
+            json_append(jb, ",");
         }
         json_end_array(jb);
         json_end_object(jb);
@@ -871,6 +874,7 @@ void api_get_path_details(int client, int path_id) {
             json_add_string(jb, "category", (const char *)sqlite3_column_text(stmt, 2));
             json_add_int(jb, "position", sqlite3_column_int(stmt, 3));
             json_end_object(jb);
+            json_append(jb, ",");
         }
         json_end_array(jb);
         sqlite3_finalize(stmt);
@@ -994,6 +998,7 @@ void api_get_tasks(int client, const char *query_string) {
             json_add_int(jb, "points", sqlite3_column_int(stmt, 4));
             json_add_string(jb, "task_type", (const char *)sqlite3_column_text(stmt, 5));
             json_end_object(jb);
+            json_append(jb, ",");
         }
         json_end_array(jb);
         json_end_object(jb);
