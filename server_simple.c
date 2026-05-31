@@ -52,7 +52,7 @@ void serve_static(int client, const char *path) {
     fseek(f, 0, SEEK_SET);
     
     char header[512];
-    sprintf(header, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %ld\r\nAccess-Control-Allow-Origin: *\r\n\r\n",
+    sprintf(header, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %ld\r\nCache-Control: no-cache, no-store, must-revalidate\r\nAccess-Control-Allow-Origin: *\r\n\r\n",
             get_mime_type(file_path), size);
     send(client, header, strlen(header), 0);
     
