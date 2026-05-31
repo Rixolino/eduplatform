@@ -744,6 +744,71 @@ void api_get_enrollments(int client, const char *request) {
     }
 }
 
+// GET /api/teacher/students
+void api_get_teacher_students(int client, const char *request) {
+    const char *auth_header = get_header(request, "Authorization");
+    if (!auth_header || strncasecmp(auth_header, "Bearer ", 7) != 0) {
+        send_json_response(client, 401, "{\"error\":\"Authorization required\"}");
+        return;
+    }
+    const char *token = auth_header + 7;
+
+    int teacher_id = 0;
+    sqlite3_stmt *sstmt;
+    if (sqlite3_prepare_v2(db, "SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')", -1, &sstmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(sstmt, 1, token, -1, SQLITE_STATIC);
+        if (sqlite3_step(sstmt) == SQLITE_ROW) {
+            teacher_id = sqlite3_column_int(sstmt, 0);
+        }
+        sqlite3_finalize(sstmt);
+    }
+    if (teacher_id == 0) {
+        send_json_response(client, 401, "{\"error\":\"Invalid or expired token\"}");
+        return;
+    }
+
+    const char *query =
+        "SELECT u.id, u.username, u.full_name, u.email, "
+        "       c.title AS course_title, e.progress_percentage, e.status "
+        "FROM enrollments e "
+        "JOIN users u ON e.student_id = u.id "
+        "JOIN courses c ON e.course_id = c.id "
+        "WHERE c.teacher_id = ? "
+        "ORDER BY u.id";
+
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, teacher_id);
+
+        JSONBuilder *jb = json_create();
+        json_start_object(jb);
+        json_start_array(jb, "students");
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            json_start_object(jb);
+            json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+            json_add_string(jb, "username", (const char *)sqlite3_column_text(stmt, 1));
+            json_add_string(jb, "full_name", (const char *)sqlite3_column_text(stmt, 2));
+            json_add_string(jb, "email", (const char *)sqlite3_column_text(stmt, 3));
+            json_add_string(jb, "course_title", (const char *)sqlite3_column_text(stmt, 4));
+            json_add_double(jb, "progress_percentage", sqlite3_column_double(stmt, 5));
+            json_add_string(jb, "status", (const char *)sqlite3_column_text(stmt, 6));
+            json_end_object(jb);
+        }
+
+        json_end_array(jb);
+        json_end_object(jb);
+
+        char *resp = json_get_string(jb);
+        send_json_response(client, 200, resp);
+        free(resp);
+        json_free(jb);
+        sqlite3_finalize(stmt);
+    } else {
+        send_json_response(client, 500, "{\"error\":\"Database query error\"}");
+    }
+}
+
 // GET /api/paths
 void api_get_paths(int client) {
     sqlite3_stmt *stmt;
@@ -1040,6 +1105,9 @@ void handle_request(int client, const char *request) {
         }
         else if (strcmp(path, "/api/users/skills") == 0 && strcmp(method, "GET") == 0) {
             send_json_response(client, 200, "{\"skills\": [{\"category\":\"Programmazione\", \"score\": 3.5}, {\"category\":\"Design\", \"score\": 1.2}, {\"category\":\"Data Science\", \"score\": 0.8}]}");
+        }
+        else if (strcmp(path, "/api/teacher/students") == 0 && strcmp(method, "GET") == 0) {
+            api_get_teacher_students(client, request);
         }
         else {
             send_json_response(client, 404, "{\"error\":\"Not found\"}");

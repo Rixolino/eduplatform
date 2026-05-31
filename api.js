@@ -179,6 +179,11 @@ class APIClient {
         return this.request('GET', `/api/paths/${pathId}`);
     }
 
+    // Teacher endpoints
+    async getTeacherStudents() {
+        return this.request('GET', '/api/teacher/students');
+    }
+
     // Study Buddy
     async getCourseBuddies(courseId) {
         return this.request('GET', `/api/courses/${courseId}/buddies`);

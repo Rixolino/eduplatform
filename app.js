@@ -182,10 +182,10 @@ class CourseApp {
             'paths': ['pathsCatalog', this.loadPathsCatalog.bind(this)],
             'my-courses': ['myCourses', this.loadMyCourses.bind(this)],
             'progress': ['progressTracker', this.loadProgressTracker.bind(this)],
-            'teacher-dashboard': ['teacherCoursesList', this.loadTeacherDashboard.bind(this)],
-            'teacher-courses': ['teacherCoursesList', this.loadTeacherDashboard.bind(this)],
+            'teacher-dashboard': ['teacherDashboardSummary', this.loadTeacherDashboard.bind(this)],
+            'teacher-courses': ['teacherManageCourses', this.loadTeacherCourses.bind(this)],
             'create-course': ['createCourseFormContainer', () => {}],
-            'students': ['studentList', this.loadStudentsList.bind(this)]
+            'students': ['teacherStudentList', this.loadStudentsList.bind(this)]
         };
 
         if (sections[section]) {
@@ -346,45 +346,63 @@ class CourseApp {
         try {
             const courses = await api.getCourses();
             const currentTeacherId = this.currentUser.user_id || this.currentUser.id || 0;
-            
-            console.log('[TeacherDashboard] Current Teacher ID:', currentTeacherId);
-            console.log('[TeacherDashboard] All courses from API:', courses);
-
             const teacherCourses = courses.filter(c => c.teacher_id == currentTeacherId);
-            console.log('[TeacherDashboard] Filtered courses for teacher:', teacherCourses);
 
             document.getElementById('teacherGreeting').textContent = this.currentUser.full_name;
             document.getElementById('teacherStatCourses').textContent = teacherCourses.length;
 
-            // Render a list of courses with a "Manage Tasks" button
+            try {
+                const studentsRes = await api.getTeacherStudents();
+                const uniqueStudents = new Set((studentsRes.students || []).map(s => s.id));
+                document.getElementById('teacherStatStudents').textContent = uniqueStudents.size;
+            } catch (e) {}
+
             const coursesList = document.getElementById('teacherCoursesList');
             if (coursesList) {
-                coursesList.innerHTML = '';
-                if (teacherCourses.length === 0) {
-                    coursesList.innerHTML = '<p style="text-align:center; padding: 2rem; color: var(--text-secondary);">Nessun corso creato. Inizia creando il tuo primo corso!</p>';
-                    return;
-                }
-                teacherCourses.forEach(course => {
-                    const div = document.createElement('div');
-                    div.className = 'course-card';
-                    div.innerHTML = `
-                        <div class="course-card-header">
-                            <h3 style="cursor:pointer; color:var(--primary-color);" onclick="app.viewCourse(${course.id})">${course.title}</h3>
-                        </div>
-                        <div class="course-card-body">
-                            <p>${course.description}</p>
-                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                                <button class="btn btn-primary" onclick="app.showTaskCreation(${course.id})">Gestisci Task & Quiz</button>
-                                <button class="btn btn-secondary" onclick="app.viewCourse(${course.id})">Apri Corso</button>
-                            </div>
-                        </div>
-                    `;
-                    coursesList.appendChild(div);
-                });
+                this._renderTeacherCourseCards(coursesList, teacherCourses);
             }
         } catch (error) {
             console.error('Error loading teacher dashboard:', error);
         }
+    }
+
+    async loadTeacherCourses() {
+        try {
+            const courses = await api.getCourses();
+            const currentTeacherId = this.currentUser.user_id || this.currentUser.id || 0;
+            const teacherCourses = courses.filter(c => c.teacher_id == currentTeacherId);
+            const container = document.getElementById('managedCoursesList');
+            if (container) {
+                this._renderTeacherCourseCards(container, teacherCourses);
+            }
+        } catch (error) {
+            console.error('Error loading teacher courses:', error);
+        }
+    }
+
+    _renderTeacherCourseCards(container, teacherCourses) {
+        container.innerHTML = '';
+        if (teacherCourses.length === 0) {
+            container.innerHTML = '<p style="text-align:center; padding: 2rem; color: var(--text-secondary);">Nessun corso creato. Inizia creando il tuo primo corso!</p>';
+            return;
+        }
+        teacherCourses.forEach(course => {
+            const div = document.createElement('div');
+            div.className = 'course-card';
+            div.innerHTML = `
+                <div class="course-card-header">
+                    <h3 style="cursor:pointer; color:var(--primary-color);" onclick="app.viewCourse(${course.id})">${course.title}</h3>
+                </div>
+                <div class="course-card-body">
+                    <p>${course.description}</p>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="app.showTaskCreation(${course.id})">Gestisci Task & Quiz</button>
+                        <button class="btn btn-secondary" onclick="app.viewCourse(${course.id})">Apri Corso</button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(div);
+        });
     }
 
     showTaskCreation(courseId) {
@@ -621,18 +639,13 @@ class CourseApp {
     }
 
     async loadStudentsList() {
+        const container = document.getElementById('studentsContainer');
+        if (!container) return;
+        container.innerHTML = '<p>Caricamento studenti...</p>';
         try {
-            const container = document.getElementById('studentList');
-            if (!container) {
-                console.error('Element #studentList not found in HTML. Please add <div id="studentList" class="dashboard-section hidden"></div> to your HTML.');
-                this.showAlert('Errore: Contenitore lista studenti non trovato nell\'HTML', 'error');
-                return;
-            }
-            
-            container.innerHTML = '<p>Caricamento studenti...</p>';
-            // Implementazione futura: chiamata API per ottenere gli studenti iscritti ai corsi del docente
-            const students = []; // Mock per ora
-            
+            const res = await api.getTeacherStudents();
+            const students = res.students || [];
+
             if (students.length === 0) {
                 container.innerHTML = '<p style="text-align:center; padding: 2rem; color: var(--text-secondary);">Nessuno studente iscritto ai tuoi corsi al momento.</p>';
                 return;
@@ -641,13 +654,22 @@ class CourseApp {
             container.innerHTML = '';
             students.forEach(s => {
                 const div = document.createElement('div');
-                div.className = 'student-card';
-                div.innerHTML = `<strong>${s.full_name}</strong> - ${s.email}`;
+                div.className = 'course-card';
+                div.innerHTML = `
+                    <div class="course-card-header">
+                        <h3><i class="fas fa-user-graduate"></i> ${s.full_name || s.username}</h3>
+                    </div>
+                    <div class="course-card-body">
+                        <p><strong>Username:</strong> ${s.username}</p>
+                        <p><strong>Corso:</strong> ${s.course_title}</p>
+                        <p><strong>Progresso:</strong> ${s.progress_percentage}%</p>
+                        <p><strong>Stato:</strong> ${s.status}</p>
+                    </div>
+                `;
                 container.appendChild(div);
             });
         } catch (error) {
-            console.error('Error loading students list:', error);
-            this.showAlert('Errore nel caricamento della lista studenti', 'error');
+            container.innerHTML = '<p style="color:red;">Errore nel caricamento degli studenti.</p>';
         }
     }
 
