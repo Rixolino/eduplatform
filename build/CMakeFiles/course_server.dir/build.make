@@ -72,28 +72,28 @@ include CMakeFiles/course_server.dir/flags.make
 CMakeFiles/course_server.dir/codegen:
 .PHONY : CMakeFiles/course_server.dir/codegen
 
-CMakeFiles/course_server.dir/server.c.o: CMakeFiles/course_server.dir/flags.make
-CMakeFiles/course_server.dir/server.c.o: /home/runner/workspace/server.c
-CMakeFiles/course_server.dir/server.c.o: CMakeFiles/course_server.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/workspace/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/course_server.dir/server.c.o"
-	/nix/store/a0d7m3zn9p2dfa1h7ag9h2wzzr2w25sn-gcc-wrapper-14.2.1.20250322/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/course_server.dir/server.c.o -MF CMakeFiles/course_server.dir/server.c.o.d -o CMakeFiles/course_server.dir/server.c.o -c /home/runner/workspace/server.c
+CMakeFiles/course_server.dir/server_simple.c.o: CMakeFiles/course_server.dir/flags.make
+CMakeFiles/course_server.dir/server_simple.c.o: /home/runner/workspace/server_simple.c
+CMakeFiles/course_server.dir/server_simple.c.o: CMakeFiles/course_server.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/workspace/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/course_server.dir/server_simple.c.o"
+	/nix/store/a0d7m3zn9p2dfa1h7ag9h2wzzr2w25sn-gcc-wrapper-14.2.1.20250322/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/course_server.dir/server_simple.c.o -MF CMakeFiles/course_server.dir/server_simple.c.o.d -o CMakeFiles/course_server.dir/server_simple.c.o -c /home/runner/workspace/server_simple.c
 
-CMakeFiles/course_server.dir/server.c.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/course_server.dir/server.c.i"
-	/nix/store/a0d7m3zn9p2dfa1h7ag9h2wzzr2w25sn-gcc-wrapper-14.2.1.20250322/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/runner/workspace/server.c > CMakeFiles/course_server.dir/server.c.i
+CMakeFiles/course_server.dir/server_simple.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/course_server.dir/server_simple.c.i"
+	/nix/store/a0d7m3zn9p2dfa1h7ag9h2wzzr2w25sn-gcc-wrapper-14.2.1.20250322/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/runner/workspace/server_simple.c > CMakeFiles/course_server.dir/server_simple.c.i
 
-CMakeFiles/course_server.dir/server.c.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/course_server.dir/server.c.s"
-	/nix/store/a0d7m3zn9p2dfa1h7ag9h2wzzr2w25sn-gcc-wrapper-14.2.1.20250322/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/runner/workspace/server.c -o CMakeFiles/course_server.dir/server.c.s
+CMakeFiles/course_server.dir/server_simple.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/course_server.dir/server_simple.c.s"
+	/nix/store/a0d7m3zn9p2dfa1h7ag9h2wzzr2w25sn-gcc-wrapper-14.2.1.20250322/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/runner/workspace/server_simple.c -o CMakeFiles/course_server.dir/server_simple.c.s
 
 # Object files for target course_server
 course_server_OBJECTS = \
-"CMakeFiles/course_server.dir/server.c.o"
+"CMakeFiles/course_server.dir/server_simple.c.o"
 
 # External object files for target course_server
 course_server_EXTERNAL_OBJECTS =
 
-bin/course_server: CMakeFiles/course_server.dir/server.c.o
+bin/course_server: CMakeFiles/course_server.dir/server_simple.c.o
 bin/course_server: CMakeFiles/course_server.dir/build.make
 bin/course_server: CMakeFiles/course_server.dir/compiler_depend.ts
 bin/course_server: CMakeFiles/course_server.dir/link.txt

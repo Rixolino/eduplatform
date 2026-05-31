@@ -1,18 +1,18 @@
-#include <winsock2.h>
-#include <windows.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
-#include "sqlite3.h"
+#include <sqlite3.h>
 #include "auth.h"
 #include "json_utils.h"
 #include "db_utils.h"
 
-#pragma comment(lib, "ws2_32.lib")
-
-#define PORT 3000
+#define PORT 5000
 #define DB_PATH "courses.db"
 
 sqlite3 *db = NULL;
@@ -32,7 +32,7 @@ const char *get_mime_type(const char *path) {
 }
 
 // Serve static file
-void serve_static(SOCKET client, const char *path) {
+void serve_static(int client, const char *path) {
     char file_path[512];
     if (strcmp(path, "/") == 0) {
         strcpy(file_path, "index.html");
@@ -65,7 +65,7 @@ void serve_static(SOCKET client, const char *path) {
 }
 
 // Send standard JSON response
-void send_json_response(SOCKET client, int status, const char *json) {
+void send_json_response(int client, int status, const char *json) {
     const char *status_str = "OK";
     if (status == 201) status_str = "Created";
     else if (status == 400) status_str = "Bad Request";
@@ -135,7 +135,7 @@ const char *get_header(const char *request, const char *header_name) {
         while (*ptr == '\r' || *ptr == '\n' || *ptr == ' ') ptr++;
         if (*ptr == '\0') break;
         
-        if (_strnicmp(ptr, header_name, name_len) == 0) {
+        if (strncasecmp(ptr, header_name, name_len) == 0) {
             const char *val_start = ptr + name_len;
             while (*val_start == ' ' || *val_start == ':') val_start++;
             
@@ -212,7 +212,7 @@ int store_session(int user_id, const char *token) {
 }
 
 // POST /api/users/register
-void api_register(SOCKET client, const char *body) {
+void api_register(int client, const char *body) {
     char *username = json_get_field(body, "username");
     char *email = json_get_field(body, "email");
     char *full_name = json_get_field(body, "full_name");
@@ -270,7 +270,7 @@ void api_register(SOCKET client, const char *body) {
 }
 
 // POST /api/users/login
-void api_login(SOCKET client, const char *body) {
+void api_login(int client, const char *body) {
     char *username = json_get_field(body, "username");
     char *password = json_get_field(body, "password");
     
@@ -334,15 +334,15 @@ void api_login(SOCKET client, const char *body) {
 }
 
 // GET /api/users/profile
-void api_get_profile(SOCKET client, const char *request) {
+void api_get_profile(int client, const char *request) {
     const char *auth_header = get_header(request, "Authorization");
-    if (!auth_header || strnicmp(auth_header, "Bearer ", 7) != 0) {
+    if (!auth_header || strncasecmp(auth_header, "Bearer ", 7) != 0) {
         printf("[AUTH] No Bearer token provided in Authorization header\n");
         send_json_response(client, 401, "{\"error\":\"No token provided\"}");
         return;
     }
     const char *token = auth_header + 7;
-    printf("[AUTH] Validating token: %.15.15s...\n", token);
+    printf("[AUTH] Validating token: %.15s...\n", token);
     
     sqlite3_stmt *stmt;
     const char *query = "SELECT u.id, u.username, u.email, u.full_name, u.role "
@@ -380,7 +380,7 @@ void api_get_profile(SOCKET client, const char *request) {
 }
 
 // GET /api/courses
-void api_get_courses(SOCKET client, const char *query_string) {
+void api_get_courses(int client, const char *query_string) {
     char category[128] = {0};
     char difficulty[128] = {0};
     char search[128] = {0};
@@ -413,9 +413,6 @@ void api_get_courses(SOCKET client, const char *query_string) {
             sqlite3_bind_text(stmt, bind_idx++, difficulty, -1, SQLITE_TRANSIENT);
         }
         if (strlen(search) > 0) {
-            char search_pattern[256];
-            snprintf(search_pattern, sizeof(search_pattern), "%%s%%", search);
-            // Replace simple placeholder to avoid crash if pattern building
             char actual_pattern[256];
             sprintf(actual_pattern, "%%%s%%", search);
             sqlite3_bind_text(stmt, bind_idx++, actual_pattern, -1, SQLITE_TRANSIENT);
@@ -456,9 +453,9 @@ void api_get_courses(SOCKET client, const char *query_string) {
 }
 
 // POST /api/courses
-void api_create_course(SOCKET client, const char *request, const char *body) {
+void api_create_course(int client, const char *request, const char *body) {
     const char *auth_header = get_header(request, "Authorization");
-    if (!auth_header || strnicmp(auth_header, "Bearer ", 7) != 0) {
+    if (!auth_header || strncasecmp(auth_header, "Bearer ", 7) != 0) {
         send_json_response(client, 401, "{\"error\":\"Authorization required\"}");
         return;
     }
@@ -552,7 +549,7 @@ void api_create_course(SOCKET client, const char *request, const char *body) {
 }
 
 // GET /api/courses/:id
-void api_get_course_details(SOCKET client, int course_id) {
+void api_get_course_details(int client, int course_id) {
     sqlite3_stmt *stmt;
     const char *query = "SELECT c.id, c.title, c.description, c.teacher_id, c.category, c.difficulty_level, c.duration_hours, c.num_lessons, u.full_name AS teacher_name "
                         "FROM courses c "
@@ -587,7 +584,7 @@ void api_get_course_details(SOCKET client, int course_id) {
 }
 
 // GET /api/courses/:id/buddies
-void api_get_course_buddies(SOCKET client, int course_id) {
+void api_get_course_buddies(int client, int course_id) {
     sqlite3_stmt *stmt;
     const char *query = "SELECT u.id, u.username, u.full_name, e.progress_percentage "
                         "FROM enrollments e "
@@ -621,9 +618,9 @@ void api_get_course_buddies(SOCKET client, int course_id) {
 }
 
 // POST /api/enrollments
-void api_enroll_course(SOCKET client, const char *request, const char *body) {
+void api_enroll_course(int client, const char *request, const char *body) {
     const char *auth_header = get_header(request, "Authorization");
-    if (!auth_header || strnicmp(auth_header, "Bearer ", 7) != 0) {
+    if (!auth_header || strncasecmp(auth_header, "Bearer ", 7) != 0) {
         send_json_response(client, 401, "{\"error\":\"Authorization required\"}");
         return;
     }
@@ -687,9 +684,9 @@ void api_enroll_course(SOCKET client, const char *request, const char *body) {
 }
 
 // GET /api/enrollments
-void api_get_enrollments(SOCKET client, const char *request) {
+void api_get_enrollments(int client, const char *request) {
     const char *auth_header = get_header(request, "Authorization");
-    if (!auth_header || strnicmp(auth_header, "Bearer ", 7) != 0) {
+    if (!auth_header || strncasecmp(auth_header, "Bearer ", 7) != 0) {
         send_json_response(client, 401, "{\"error\":\"Authorization required\"}");
         return;
     }
@@ -748,7 +745,7 @@ void api_get_enrollments(SOCKET client, const char *request) {
 }
 
 // GET /api/paths
-void api_get_paths(SOCKET client) {
+void api_get_paths(int client) {
     sqlite3_stmt *stmt;
     const char *query = "SELECT id, title, description, creator_id FROM paths";
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
@@ -777,7 +774,7 @@ void api_get_paths(SOCKET client) {
 }
 
 // GET /api/paths/:id
-void api_get_path_details(SOCKET client, int path_id) {
+void api_get_path_details(int client, int path_id) {
     sqlite3_stmt *stmt;
     JSONBuilder *jb = json_create();
     json_start_object(jb);
@@ -822,9 +819,9 @@ void api_get_path_details(SOCKET client, int path_id) {
 }
 
 // POST /api/tasks
-void api_create_task(SOCKET client, const char *request, const char *body) {
+void api_create_task(int client, const char *request, const char *body) {
     const char *auth_header = get_header(request, "Authorization");
-    if (!auth_header || strnicmp(auth_header, "Bearer ", 7) != 0) {
+    if (!auth_header || strncasecmp(auth_header, "Bearer ", 7) != 0) {
         send_json_response(client, 401, "{\"error\":\"Authorization required\"}");
         return;
     }
@@ -906,7 +903,7 @@ void api_create_task(SOCKET client, const char *request, const char *body) {
 }
 
 // GET /api/tasks
-void api_get_tasks(SOCKET client, const char *query_string) {
+void api_get_tasks(int client, const char *query_string) {
     char course_id_param[64] = {0};
     get_query_param(query_string, "course_id", course_id_param, sizeof(course_id_param));
     if (strlen(course_id_param) == 0) {
@@ -947,7 +944,7 @@ void api_get_tasks(SOCKET client, const char *query_string) {
 }
 
 // Process HTTP request
-void handle_request(SOCKET client, const char *request) {
+void handle_request(int client, const char *request) {
     char method[32] = {0};
     char full_path[512] = {0};
     
@@ -1077,17 +1074,11 @@ void init_database() {
 }
 
 // Main server loop
-int main() {
-    WSADATA wsa;
-    SOCKET listen_socket, client_socket;
+int main(void) {
+    int listen_socket, client_socket;
     struct sockaddr_in server, client;
-    int client_len;
+    socklen_t client_len;
     char buffer[8192];
-    
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        fprintf(stderr, "WSAStartup failed\n");
-        return 1;
-    }
     
     if (sqlite3_open(DB_PATH, &db) != SQLITE_OK) {
         fprintf(stderr, "Cannot open database\n");
@@ -1098,10 +1089,9 @@ int main() {
     init_database();
     
     listen_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (listen_socket == INVALID_SOCKET) {
+    if (listen_socket < 0) {
         fprintf(stderr, "socket() failed\n");
         sqlite3_close(db);
-        WSACleanup();
         return 1;
     }
     
@@ -1112,11 +1102,10 @@ int main() {
     server.sin_addr.s_addr = htonl(INADDR_ANY);
     server.sin_port = htons(PORT);
     
-    if (bind(listen_socket, (struct sockaddr*)&server, sizeof(server)) == SOCKET_ERROR) {
-        fprintf(stderr, "bind() failed: %d\n", WSAGetLastError());
-        closesocket(listen_socket);
+    if (bind(listen_socket, (struct sockaddr*)&server, sizeof(server)) < 0) {
+        fprintf(stderr, "bind() failed\n");
+        close(listen_socket);
         sqlite3_close(db);
-        WSACleanup();
         return 1;
     }
     
@@ -1128,7 +1117,7 @@ int main() {
         client_len = sizeof(client);
         client_socket = accept(listen_socket, (struct sockaddr*)&client, &client_len);
         
-        if (client_socket == INVALID_SOCKET) {
+        if (client_socket < 0) {
             fprintf(stderr, "accept() failed\n");
             continue;
         }
@@ -1139,11 +1128,10 @@ int main() {
             handle_request(client_socket, buffer);
         }
         
-        closesocket(client_socket);
+        close(client_socket);
     }
     
-    closesocket(listen_socket);
+    close(listen_socket);
     sqlite3_close(db);
-    WSACleanup();
     return 0;
 }

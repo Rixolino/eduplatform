@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/runner/workspace/server.c" "CMakeFiles/course_server.dir/server.c.o" "gcc" "CMakeFiles/course_server.dir/server.c.o.d"
+  "/home/runner/workspace/server_simple.c" "CMakeFiles/course_server.dir/server_simple.c.o" "gcc" "CMakeFiles/course_server.dir/server_simple.c.o.d"
   "" "bin/course_server" "gcc" "CMakeFiles/course_server.dir/link.d"
   )
 

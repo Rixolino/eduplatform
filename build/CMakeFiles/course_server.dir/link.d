@@ -2,7 +2,7 @@ bin/course_server: \
   /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/crt1.o \
   /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/crti.o \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/crtbegin.o \
-  CMakeFiles/course_server.dir/server.c.o \
+  CMakeFiles/course_server.dir/server_simple.c.o \
   /nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib/libsqlite3.so \
   /nix/store/0g65p78hasa9rr790p877wkzq2vpvjcw-libmicrohttpd-1.0.1/lib/libmicrohttpd.so \
   /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libm.so \
@@ -50,7 +50,7 @@ bin/course_server: \
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/crtbegin.o:
 
-CMakeFiles/course_server.dir/server.c.o:
+CMakeFiles/course_server.dir/server_simple.c.o:
 
 /nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib/libsqlite3.so:
 

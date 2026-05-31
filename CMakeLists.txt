@@ -22,7 +22,7 @@ link_directories(
 )
 
 # Aggiungere l'eseguibile del server
-add_executable(course_server server.c)
+add_executable(course_server server_simple.c)
 
 # Linkare le librerie
 target_link_libraries(course_server
@@ -45,7 +45,7 @@ endif()
 
 # Aggiungere i file sources per il database
 set(SOURCES
-    server.c
+    server_simple.c
 )
 
 # Opzioni di output
