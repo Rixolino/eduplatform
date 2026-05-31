@@ -83,15 +83,23 @@ char *generate_jwt_token(AuthUser *user) {
     return token;
 }
 
+// Helper: find index of character in base64 alphabet
+static int b64_index(const char *base64_chars, char c) {
+    const char *p = strchr(base64_chars, c);
+    if (!p) return 0;
+    return (int)(p - base64_chars);
+}
+
 // Verify JWT token
 int verify_jwt_token(const char *token, AuthUser *user) {
+    (void)user;
     if (!token || strlen(token) == 0) {
         return 0;
     }
 
     // Base64 decode the token to get the payload
-    int len = strlen(token);
-    unsigned char *decoded = (unsigned char *)malloc(len);
+    int len = (int)strlen(token);
+    unsigned char *decoded = (unsigned char *)malloc(len + 1);
     if (!decoded) return 0;
 
     // Simple base64 decode logic
@@ -99,14 +107,14 @@ int verify_jwt_token(const char *token, AuthUser *user) {
 
     int dlen = 0;
     for (int i = 0; i < len; i += 4) {
-        int v1 = strcspn(base64_chars, token[i]);
-        int v2 = (i+1 < len) ? strcspn(base64_chars, token[i+1]) : 0;
-        int v3 = (i+2 < len) ? strcspn(base64_chars, token[i+2]) : 0;
-        int v4 = (i+3 < len) ? strcspn(base64_chars, token[i+3]) : 0;
-        
-        decoded[dlen++] = (v1 << 2) | (v2 >> 4);
-        if (i+2 < len && token[i+2] != '=') decoded[dlen++] = ((v2 & 15) << 4) | (v3 >> 2);
-        if (i+3 < len && token[i+3] != '=') decoded[dlen++] = ((v3 & 3) << 6) | v4;
+        int v1 = b64_index(base64_chars, token[i]);
+        int v2 = (i+1 < len) ? b64_index(base64_chars, token[i+1]) : 0;
+        int v3 = (i+2 < len) ? b64_index(base64_chars, token[i+2]) : 0;
+        int v4 = (i+3 < len) ? b64_index(base64_chars, token[i+3]) : 0;
+
+        decoded[dlen++] = (unsigned char)((v1 << 2) | (v2 >> 4));
+        if (i+2 < len && token[i+2] != '=') decoded[dlen++] = (unsigned char)(((v2 & 15) << 4) | (v3 >> 2));
+        if (i+3 < len && token[i+3] != '=') decoded[dlen++] = (unsigned char)(((v3 & 3) << 6) | v4);
     }
     decoded[dlen] = '\0';
 

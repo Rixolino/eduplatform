@@ -20,7 +20,6 @@ typedef struct {
 
 // Funzione per eseguire query SELECT
 int db_execute_query(sqlite3 *db, const char *query, QueryResult *result) {
-    char *err = 0;
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
     

@@ -10,10 +10,12 @@
 #include "auth.h"
 #include "json_utils.h"
 
-#define PORT 3000
+#define PORT 5000
 #define MAX_PATH 1024
 #define MAX_RESPONSE 16384
 #define MAX_POST_SIZE 8192
+
+void log_message(const char *format, ...);
 
 sqlite3 *db;
 
@@ -312,7 +314,7 @@ int email_exists(const char *email) {
 }
 
 // Handler per le richieste HTTP
-static int request_handler(void *cls,
+static enum MHD_Result request_handler(void *cls,
                           struct MHD_Connection *connection,
                           const char *url,
                           const char *method,
@@ -320,6 +322,8 @@ static int request_handler(void *cls,
                           const char *upload_data,
                           size_t *upload_data_size,
                           void **con_cls) {
+    (void)cls;
+    (void)version;
     
     log_message("%s %s", method, url);
     
@@ -330,7 +334,14 @@ static int request_handler(void *cls,
         return MHD_YES;
     }
     
-    // Root API endpoint
+    // Serve static files for non-API GET requests
+    if (strcmp(method, "GET") == 0 && strncmp(url, "/api/", 5) != 0) {
+        if (serve_static_file(connection, url) == MHD_YES) {
+            return MHD_YES;
+        }
+    }
+
+    // Root API status endpoint (only reached if static file not found)
     if (strcmp(url, "/") == 0) {
         const char *response = "{\"status\": \"ok\", \"message\": \"Piattaforma Corsi Online API v1.0\"}";
         send_json_response(connection, response, MHD_HTTP_OK);
@@ -1128,15 +1139,19 @@ static int request_handler(void *cls,
                     sqlite3_finalize(stmt);
                 }
             }
-            if (title) free(title); if (description) free(description); if (course_id_s) free(course_id_s);
-            if (type) free(type); if (due_date) free(due_date); if (points_s) free(points_s);
+            if (title) free(title);
+            if (description) free(description);
+            if (course_id_s) free(course_id_s);
+            if (type) free(type);
+            if (due_date) free(due_date);
+            if (points_s) free(points_s);
             free(pdata->data); free(pdata); *con_cls = NULL;
             return MHD_YES;
         }
 
         // GET /api/tasks?course_id=X
         if (strcmp(url, "/api/tasks") == 0 && strcmp(method, "GET") == 0) {
-            const char *course_id_param = MHD_lookup_connection_value(connection, MHD_GET_ARG_KIND, "course_id");
+            const char *course_id_param = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "course_id");
             if (!course_id_param) {
                 char *err = json_error_response("course_id parameter required");
                 send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
@@ -1191,6 +1206,8 @@ static int request_handler(void *cls,
 }
 
 int main(int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
     log_message("Starting Piattaforma Corsi Online Backend...");
     
     // Aprire il database

@@ -1,0 +1,1 @@
+/nix/store/a0d7m3zn9p2dfa1h7ag9h2wzzr2w25sn-gcc-wrapper-14.2.1.20250322/bin/gcc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/course_server.dir/link.d CMakeFiles/course_server.dir/server.c.o -o bin/course_server  -lsqlite3 -lmicrohttpd -lm

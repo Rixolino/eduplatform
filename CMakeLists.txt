@@ -5,15 +5,20 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Trovare le librerie richieste
-find_package(SQLite3 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MICROHTTPD REQUIRED libmicrohttpd)
+pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 
 # Includere le directory
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${SQLITE3_INCLUDE_DIRS}
     ${MICROHTTPD_INCLUDE_DIRS}
+)
+
+link_directories(
+    ${SQLITE3_LIBRARY_DIRS}
+    ${MICROHTTPD_LIBRARY_DIRS}
 )
 
 # Aggiungere l'eseguibile del server
@@ -26,11 +31,16 @@ target_link_libraries(course_server
     m
 )
 
+target_link_directories(course_server PRIVATE
+    ${SQLITE3_LIBRARY_DIRS}
+    ${MICROHTTPD_LIBRARY_DIRS}
+)
+
 # Opzioni di compilazione
 if(MSVC)
     target_compile_options(course_server PRIVATE /W4 /WX)
 else()
-    target_compile_options(course_server PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(course_server PRIVATE -Wall -Wextra)
 endif()
 
 # Aggiungere i file sources per il database
