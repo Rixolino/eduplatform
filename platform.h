@@ -22,6 +22,9 @@
     #define SOCKET_ERROR_VAL INVALID_SOCKET
     typedef SOCKET socket_t;
 
+    #define strncasecmp _strnicmp
+    #define strcasecmp  _stricmp
+
 #else
     #include <sys/socket.h>
     #include <netinet/in.h>

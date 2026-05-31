@@ -52,3 +52,7 @@ if(WIN32)
 else()
     message(STATUS "Platform: POSIX")
 endif()
+
+
+# ── Secondo esempio ────────────────────────────────────────────────────────────
+add_executable(edu_project main.cpp)
