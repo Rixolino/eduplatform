@@ -639,7 +639,7 @@ class CourseApp {
     }
 
     async loadStudentsList() {
-        const container = document.getElementById('studentsContainer');
+        const container = document.getElementById('teacherStudentsContainer');
         if (!container) return;
         container.innerHTML = '<p>Caricamento studenti...</p>';
         try {
