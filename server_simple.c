@@ -1078,7 +1078,7 @@ int main(void) {
     int listen_socket, client_socket;
     struct sockaddr_in server, client;
     socklen_t client_len;
-    char buffer[8192];
+    char buffer[65536];
     
     if (sqlite3_open(DB_PATH, &db) != SQLITE_OK) {
         fprintf(stderr, "Cannot open database\n");
@@ -1122,9 +1122,40 @@ int main(void) {
             continue;
         }
         
-        int bytes = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
-        if (bytes > 0) {
-            buffer[bytes] = 0;
+        int total = 0;
+        int bytes;
+        buffer[0] = '\0';
+
+        /* Read until we have the complete HTTP request (headers + body) */
+        while (total < (int)sizeof(buffer) - 1) {
+            bytes = recv(client_socket, buffer + total, sizeof(buffer) - 1 - total, 0);
+            if (bytes <= 0) break;
+            total += bytes;
+            buffer[total] = '\0';
+
+            char *header_end = strstr(buffer, "\r\n\r\n");
+            if (header_end) {
+                /* Headers fully received; now check Content-Length */
+                const char *cl_hdr = strstr(buffer, "Content-Length:");
+                if (!cl_hdr) cl_hdr = strstr(buffer, "content-length:");
+                if (cl_hdr) {
+                    int content_length = atoi(cl_hdr + 15);
+                    int header_len = (int)(header_end - buffer) + 4;
+                    int body_received = total - header_len;
+                    /* Keep reading until the full body has arrived */
+                    while (body_received < content_length && total < (int)sizeof(buffer) - 1) {
+                        bytes = recv(client_socket, buffer + total, sizeof(buffer) - 1 - total, 0);
+                        if (bytes <= 0) break;
+                        total += bytes;
+                        body_received += bytes;
+                    }
+                    buffer[total] = '\0';
+                }
+                break;
+            }
+        }
+
+        if (total > 0) {
             handle_request(client_socket, buffer);
         }
         
