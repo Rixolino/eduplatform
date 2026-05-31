@@ -219,8 +219,17 @@ PKG_CONFIG_ARGN:STRING=
 //pkg-config executable
 PKG_CONFIG_EXECUTABLE:FILEPATH=/nix/store/d667kdfbfn17905f7kmdl33r9gvwzaji-pkg-config-wrapper-0.29.2/bin/pkg-config
 
+//Path to a file.
+SQLite3_INCLUDE_DIR:PATH=/nix/store/k6gi198r2cjjk70dnr1dwibgzf8gjbm2-sqlite-3.48.0-dev/include
+
+//Path to a library.
+SQLite3_LIBRARY:FILEPATH=/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib/libsqlite3.so
+
 //Path to a library.
 pkgcfg_lib_MICROHTTPD_microhttpd:FILEPATH=/nix/store/0g65p78hasa9rr790p877wkzq2vpvjcw-libmicrohttpd-1.0.1/lib/libmicrohttpd.so
+
+//Path to a library.
+pkgcfg_lib_PC_SQLite3_sqlite3:FILEPATH=/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib/libsqlite3.so
 
 //Path to a library.
 pkgcfg_lib_SQLITE3_sqlite3:FILEPATH=/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib/libsqlite3.so
@@ -361,6 +370,8 @@ CMAKE_UNAME:INTERNAL=/nix/store/mp7ba85zcqdj2sqwa29pql02s6nqpcxy-coreutils-9.7/b
 CMAKE_VERBOSE_MAKEFILE-ADVANCED:INTERNAL=1
 //Details about finding PkgConfig
 FIND_PACKAGE_MESSAGE_DETAILS_PkgConfig:INTERNAL=[/nix/store/d667kdfbfn17905f7kmdl33r9gvwzaji-pkg-config-wrapper-0.29.2/bin/pkg-config][v0.29.2()]
+//Details about finding SQLite3
+FIND_PACKAGE_MESSAGE_DETAILS_SQLite3:INTERNAL=[/nix/store/k6gi198r2cjjk70dnr1dwibgzf8gjbm2-sqlite-3.48.0-dev/include][/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib/libsqlite3.so][v3.48.0()]
 MICROHTTPD_CFLAGS:INTERNAL=-I/nix/store/rlzr9m1mvrvg5bjzd6mfdmhyd1ssp0va-libmicrohttpd-1.0.1-dev/include
 MICROHTTPD_CFLAGS_I:INTERNAL=
 MICROHTTPD_CFLAGS_OTHER:INTERNAL=
@@ -396,6 +407,41 @@ MICROHTTPD_libmicrohttpd_INCLUDEDIR:INTERNAL=
 MICROHTTPD_libmicrohttpd_LIBDIR:INTERNAL=
 MICROHTTPD_libmicrohttpd_PREFIX:INTERNAL=
 MICROHTTPD_libmicrohttpd_VERSION:INTERNAL=
+PC_SQLite3_CFLAGS:INTERNAL=-I/nix/store/k6gi198r2cjjk70dnr1dwibgzf8gjbm2-sqlite-3.48.0-dev/include
+PC_SQLite3_CFLAGS_I:INTERNAL=
+PC_SQLite3_CFLAGS_OTHER:INTERNAL=
+PC_SQLite3_FOUND:INTERNAL=1
+PC_SQLite3_INCLUDEDIR:INTERNAL=/nix/store/k6gi198r2cjjk70dnr1dwibgzf8gjbm2-sqlite-3.48.0-dev/include
+PC_SQLite3_INCLUDE_DIRS:INTERNAL=/nix/store/k6gi198r2cjjk70dnr1dwibgzf8gjbm2-sqlite-3.48.0-dev/include
+PC_SQLite3_LDFLAGS:INTERNAL=-L/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib;-lsqlite3
+PC_SQLite3_LDFLAGS_OTHER:INTERNAL=
+PC_SQLite3_LIBDIR:INTERNAL=/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib
+PC_SQLite3_LIBRARIES:INTERNAL=sqlite3
+PC_SQLite3_LIBRARY_DIRS:INTERNAL=/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib
+PC_SQLite3_LIBS:INTERNAL=
+PC_SQLite3_LIBS_L:INTERNAL=
+PC_SQLite3_LIBS_OTHER:INTERNAL=
+PC_SQLite3_LIBS_PATHS:INTERNAL=
+PC_SQLite3_MODULE_NAME:INTERNAL=sqlite3
+PC_SQLite3_PREFIX:INTERNAL=/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0
+PC_SQLite3_STATIC_CFLAGS:INTERNAL=-I/nix/store/k6gi198r2cjjk70dnr1dwibgzf8gjbm2-sqlite-3.48.0-dev/include
+PC_SQLite3_STATIC_CFLAGS_I:INTERNAL=
+PC_SQLite3_STATIC_CFLAGS_OTHER:INTERNAL=
+PC_SQLite3_STATIC_INCLUDE_DIRS:INTERNAL=/nix/store/k6gi198r2cjjk70dnr1dwibgzf8gjbm2-sqlite-3.48.0-dev/include
+PC_SQLite3_STATIC_LDFLAGS:INTERNAL=-L/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib;-lsqlite3;-lz;-lm
+PC_SQLite3_STATIC_LDFLAGS_OTHER:INTERNAL=
+PC_SQLite3_STATIC_LIBDIR:INTERNAL=
+PC_SQLite3_STATIC_LIBRARIES:INTERNAL=sqlite3;z;m
+PC_SQLite3_STATIC_LIBRARY_DIRS:INTERNAL=/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib
+PC_SQLite3_STATIC_LIBS:INTERNAL=
+PC_SQLite3_STATIC_LIBS_L:INTERNAL=
+PC_SQLite3_STATIC_LIBS_OTHER:INTERNAL=
+PC_SQLite3_STATIC_LIBS_PATHS:INTERNAL=
+PC_SQLite3_VERSION:INTERNAL=3.48.0
+PC_SQLite3_sqlite3_INCLUDEDIR:INTERNAL=
+PC_SQLite3_sqlite3_LIBDIR:INTERNAL=
+PC_SQLite3_sqlite3_PREFIX:INTERNAL=
+PC_SQLite3_sqlite3_VERSION:INTERNAL=
 //ADVANCED property for variable: PKG_CONFIG_ARGN
 PKG_CONFIG_ARGN-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: PKG_CONFIG_EXECUTABLE
@@ -435,16 +481,24 @@ SQLITE3_sqlite3_INCLUDEDIR:INTERNAL=
 SQLITE3_sqlite3_LIBDIR:INTERNAL=
 SQLITE3_sqlite3_PREFIX:INTERNAL=
 SQLITE3_sqlite3_VERSION:INTERNAL=
+//ADVANCED property for variable: SQLite3_INCLUDE_DIR
+SQLite3_INCLUDE_DIR-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: SQLite3_LIBRARY
+SQLite3_LIBRARY-ADVANCED:INTERNAL=1
 //linker supports push/pop state
 _CMAKE_C_LINKER_PUSHPOP_STATE_SUPPORTED:INTERNAL=TRUE
 //linker supports push/pop state
 _CMAKE_LINKER_PUSHPOP_STATE_SUPPORTED:INTERNAL=TRUE
 __pkg_config_arguments_MICROHTTPD:INTERNAL=REQUIRED;libmicrohttpd
+__pkg_config_arguments_PC_SQLite3:INTERNAL=QUIET;sqlite3
 __pkg_config_arguments_SQLITE3:INTERNAL=REQUIRED;sqlite3
 __pkg_config_checked_MICROHTTPD:INTERNAL=1
+__pkg_config_checked_PC_SQLite3:INTERNAL=1
 __pkg_config_checked_SQLITE3:INTERNAL=1
 //ADVANCED property for variable: pkgcfg_lib_MICROHTTPD_microhttpd
 pkgcfg_lib_MICROHTTPD_microhttpd-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: pkgcfg_lib_PC_SQLite3_sqlite3
+pkgcfg_lib_PC_SQLite3_sqlite3-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: pkgcfg_lib_SQLITE3_sqlite3
 pkgcfg_lib_SQLITE3_sqlite3-ADVANCED:INTERNAL=1
 prefix_result:INTERNAL=/nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib

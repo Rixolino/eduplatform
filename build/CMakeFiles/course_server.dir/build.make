@@ -96,6 +96,7 @@ course_server_EXTERNAL_OBJECTS =
 bin/course_server: CMakeFiles/course_server.dir/server_simple.c.o
 bin/course_server: CMakeFiles/course_server.dir/build.make
 bin/course_server: CMakeFiles/course_server.dir/compiler_depend.ts
+bin/course_server: /nix/store/lc8ni1p2b6lljpb9sbx1v7yhjpv60pl3-sqlite-3.48.0/lib/libsqlite3.so
 bin/course_server: CMakeFiles/course_server.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/runner/workspace/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking C executable bin/course_server"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/course_server.dir/link.txt --verbose=$(VERBOSE)

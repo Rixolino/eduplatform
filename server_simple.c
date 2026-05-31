@@ -1,7 +1,4 @@
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
+#include "platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1148,13 +1145,19 @@ void init_database() {
 
 // Main server loop
 int main(void) {
-    int listen_socket, client_socket;
+    socket_t listen_socket, client_socket;
     struct sockaddr_in server, client;
     socklen_t client_len;
     char buffer[65536];
-    
+
+    if (platform_init_sockets() != 0) {
+        fprintf(stderr, "Failed to initialize sockets\n");
+        return 1;
+    }
+
     if (sqlite3_open(DB_PATH, &db) != SQLITE_OK) {
         fprintf(stderr, "Cannot open database\n");
+        platform_cleanup_sockets();
         return 1;
     }
     sqlite3_exec(db, "PRAGMA foreign_keys = ON;", NULL, NULL, NULL);
@@ -1162,9 +1165,10 @@ int main(void) {
     init_database();
     
     listen_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (listen_socket < 0) {
+    if (listen_socket == (socket_t)INVALID_SOCKET) {
         fprintf(stderr, "socket() failed\n");
         sqlite3_close(db);
+        platform_cleanup_sockets();
         return 1;
     }
     
@@ -1177,7 +1181,7 @@ int main(void) {
     
     if (bind(listen_socket, (struct sockaddr*)&server, sizeof(server)) < 0) {
         fprintf(stderr, "bind() failed\n");
-        close(listen_socket);
+        close_socket(listen_socket);
         sqlite3_close(db);
         return 1;
     }
@@ -1190,7 +1194,7 @@ int main(void) {
         client_len = sizeof(client);
         client_socket = accept(listen_socket, (struct sockaddr*)&client, &client_len);
         
-        if (client_socket < 0) {
+        if (client_socket == (socket_t)INVALID_SOCKET) {
             fprintf(stderr, "accept() failed\n");
             continue;
         }
@@ -1232,10 +1236,11 @@ int main(void) {
             handle_request(client_socket, buffer);
         }
         
-        close(client_socket);
+        close_socket(client_socket);
     }
     
-    close(listen_socket);
+    close_socket(listen_socket);
     sqlite3_close(db);
+    platform_cleanup_sockets();
     return 0;
 }

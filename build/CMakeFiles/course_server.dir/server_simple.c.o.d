@@ -1,6 +1,7 @@
 CMakeFiles/course_server.dir/server_simple.c.o: \
  /home/runner/workspace/server_simple.c \
  /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/stdc-predef.h \
+ /home/runner/workspace/platform.h \
  /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/sys/socket.h \
  /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/features.h \
  /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/features-time64.h \
