@@ -6,9 +6,22 @@ class CourseApp {
         this.init();
     }
 
-    init() {
+    async init() {
+        await this.loadPartials();
         this.setupEventListeners();
         this.checkAuthStatus();
+    }
+
+    async loadPartials() {
+        try {
+            const headerRes = await fetch('partials/header.html');
+            if (headerRes.ok) document.getElementById('header-placeholder').innerHTML = await headerRes.text();
+
+            const footerRes = await fetch('partials/footer.html');
+            if (footerRes.ok) document.getElementById('footer-placeholder').innerHTML = await footerRes.text();
+        } catch (e) {
+            console.error('Error loading partials:', e);
+        }
     }
 
     setupEventListeners() {
@@ -43,6 +56,23 @@ class CourseApp {
 
         // Course form
         document.getElementById('courseForm')?.addEventListener('submit', (e) => this.handleCreateCourse(e));
+
+        // Task form
+        document.getElementById('taskForm')?.addEventListener('submit', (e) => this.handleCreateTask(e));
+
+        // Focus Mode / Pomodoro
+        document.getElementById('btnExitFocus')?.addEventListener('click', () => {
+            document.getElementById('focusModeOverlay').classList.add('hidden');
+            this.pausePomodoro();
+        });
+        document.getElementById('btnTimerStart')?.addEventListener('click', () => this.startPomodoro());
+        document.getElementById('btnTimerPause')?.addEventListener('click', () => this.pausePomodoro());
+        document.getElementById('btnTimerReset')?.addEventListener('click', () => this.resetPomodoro());
+
+        // Study Buddy
+        document.getElementById('closeBuddyModal')?.addEventListener('click', () => {
+            document.getElementById('studyBuddyModal').classList.add('hidden');
+        });
     }
 
     async checkAuthStatus() {
@@ -99,15 +129,15 @@ class CourseApp {
     async handleLogout() {
         await api.logout();
         this.currentUser = null;
-        this.showPage('landing');
+        window.location.reload();
     }
 
     showAuthenticatedUI() {
         const navbar = document.getElementById('navbarMenu');
         if (navbar) {
             navbar.innerHTML = `
-                <li><span>Benvenuto, ${this.currentUser.full_name}</span></li>
-                <li><a href="#" id="btnLogout">Logout</a></li>
+                <li><span>Benvenuto, ${this.currentUser.username}</span></li>
+                <li><a href="#" id="btnLogout" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
             `;
             document.getElementById('btnLogout').addEventListener('click', () => this.handleLogout());
         }
@@ -149,10 +179,12 @@ class CourseApp {
         const sections = {
             'dashboard': ['dashboardSummary', this.loadStudentDashboard.bind(this)],
             'courses': ['coursesCatalog', this.loadCoursesCatalog.bind(this)],
+            'paths': ['pathsCatalog', this.loadPathsCatalog.bind(this)],
             'my-courses': ['myCourses', this.loadMyCourses.bind(this)],
             'progress': ['progressTracker', this.loadProgressTracker.bind(this)],
-            'teacher-dashboard': ['teacherDashboardSummary', this.loadTeacherDashboard.bind(this)],
-            'create-course': ['createCourseForm', () => {}],
+            'teacher-dashboard': ['teacherCoursesList', this.loadTeacherDashboard.bind(this)],
+            'teacher-courses': ['teacherCoursesList', this.loadTeacherDashboard.bind(this)],
+            'create-course': ['createCourseFormContainer', () => {}],
             'students': ['studentList', this.loadStudentsList.bind(this)]
         };
 
@@ -160,8 +192,14 @@ class CourseApp {
             document.querySelectorAll('.dashboard-section').forEach(s => {
                 s.classList.add('hidden');
             });
-            document.getElementById(sections[section][0])?.classList.remove('hidden');
-            sections[section][1]();
+            const targetId = sections[section][0];
+            const targetEl = document.getElementById(targetId);
+            if (targetEl) {
+                targetEl.classList.remove('hidden');
+                sections[section][1]();
+            } else {
+                console.error(`Dashboard section element not found: ${targetId}`);
+            }
         }
     }
 
@@ -173,8 +211,86 @@ class CourseApp {
             
             const completed = enrollments.filter(e => e.status === 'completed').length;
             document.getElementById('statCompleted').textContent = completed;
+
+            // Generate Skill Graph
+            this.renderSkillGraph(enrollments);
         } catch (error) {
             console.error('Error loading dashboard:', error);
+        }
+    }
+
+    async renderSkillGraph(enrollments) {
+        try {
+            const res = await api.getUserSkills();
+            const skills = res.skills || [];
+            
+            const container = document.getElementById('skillGraphCanvas');
+            if(!container) return;
+
+            if (skills.length === 0) {
+                container.innerHTML = '<p>Nessuna competenza acquisita ancora.</p>';
+                return;
+            }
+
+            let mermaidCode = 'graph BT\n';
+            mermaidCode += '  root(("Selettore Competenze"))\n';
+
+            skills.forEach((skill, idx) => {
+                const nodeId = `skill_${idx}`;
+                const score = parseFloat(skill.score).toFixed(1);
+                mermaidCode += `  ${nodeId}["${skill.category} (Lv. ${score})"]\n`;
+                mermaidCode += `  ${nodeId} --> root\n`;
+            });
+
+            container.innerHTML = `<div class="mermaid">${mermaidCode}</div>`;
+            if (window.mermaid) {
+                mermaid.init(undefined, container.querySelectorAll('.mermaid'));
+            }
+        } catch (e) {
+            console.error('Error rendering skill graph', e);
+        }
+    }
+
+    async loadPathsCatalog() {
+        try {
+            const res = await api.getPaths();
+            const paths = res.paths || [];
+            const container = document.getElementById('pathsList');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            if (paths.length === 0) {
+                container.innerHTML = '<p>Nessun percorso trovato.</p>';
+                return;
+            }
+
+            paths.forEach(p => {
+                const card = document.createElement('div');
+                card.className = 'course-card';
+                card.innerHTML = `
+                    <div class="course-card-header">
+                        <h3>${p.title}</h3>
+                    </div>
+                    <div class="course-card-body">
+                        <p class="course-description">${p.description || ''}</p>
+                        <div class="course-card-footer" style="margin-top: 1rem;">
+                            <button class="btn btn-primary" onclick="app.viewPath(${p.id})">Vedi Percorso</button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        } catch (e) {
+            console.error('Error loading paths', e);
+        }
+    }
+
+    async viewPath(pathId) {
+        try {
+            const res = await api.getPathDetails(pathId);
+            this.showAlert('Percorso caricato: ' + res.courses.map(c => c.title).join(' -> '), 'success');
+        } catch(e) {
+            this.showAlert('Errore nel caricare il percorso', 'error');
         }
     }
 
@@ -229,24 +345,97 @@ class CourseApp {
     async loadTeacherDashboard() {
         try {
             const courses = await api.getCourses();
-            const teacherCourses = courses.filter(c => c.teacher_id === this.currentUser.id);
+            const currentTeacherId = this.currentUser.user_id || this.currentUser.id || 0;
             
+            console.log('[TeacherDashboard] Current Teacher ID:', currentTeacherId);
+            console.log('[TeacherDashboard] All courses from API:', courses);
+
+            const teacherCourses = courses.filter(c => c.teacher_id == currentTeacherId);
+            console.log('[TeacherDashboard] Filtered courses for teacher:', teacherCourses);
+
             document.getElementById('teacherGreeting').textContent = this.currentUser.full_name;
             document.getElementById('teacherStatCourses').textContent = teacherCourses.length;
+
+            // Render a list of courses with a "Manage Tasks" button
+            const coursesList = document.getElementById('teacherCoursesList');
+            if (coursesList) {
+                coursesList.innerHTML = '';
+                if (teacherCourses.length === 0) {
+                    coursesList.innerHTML = '<p style="text-align:center; padding: 2rem; color: var(--text-secondary);">Nessun corso creato. Inizia creando il tuo primo corso!</p>';
+                    return;
+                }
+                teacherCourses.forEach(course => {
+                    const div = document.createElement('div');
+                    div.className = 'course-card';
+                    div.innerHTML = `
+                        <div class="course-card-header">
+                            <h3 style="cursor:pointer; color:var(--primary-color);" onclick="app.viewCourse(${course.id})">${course.title}</h3>
+                        </div>
+                        <div class="course-card-body">
+                            <p>${course.description}</p>
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                <button class="btn btn-primary" onclick="app.showTaskCreation(${course.id})">Gestisci Task & Quiz</button>
+                                <button class="btn btn-secondary" onclick="app.viewCourse(${course.id})">Apri Corso</button>
+                            </div>
+                        </div>
+                    `;
+                    coursesList.appendChild(div);
+                });
+            }
         } catch (error) {
             console.error('Error loading teacher dashboard:', error);
         }
     }
 
-    async handleCreateCourse(e) {
+    showTaskCreation(courseId) {
+        // Simple UI switch to show task form
+        document.getElementById('createCourseFormContainer')?.classList.add('hidden');
+        document.getElementById('taskFormContainer')?.classList.remove('hidden');
+        document.getElementById('taskCourseId').value = courseId;
+    }
+
+    async handleCreateTask(e) {
         e.preventDefault();
-        const formData = new FormData(document.getElementById('courseForm'));
-        const courseData = Object.fromEntries(formData);
+        const formEl = document.getElementById('taskForm');
+        const formData = new FormData(formEl);
+        const taskData = Object.fromEntries(formData);
 
         try {
-            await api.createCourse(courseData);
+            const res = await api.createTask(taskData);
+            this.showAlert('Task creato con successo!', 'success');
+            formEl.reset();
+            // Optionally refresh a task list here
+        } catch (error) {
+            this.showAlert('Errore nella creazione del task: ' + error.message, 'error');
+        }
+    }
+
+    async handleCreateCourse(e) {
+        e.preventDefault();
+        // Only teachers or admins can create courses (client-side guard)
+        if (!this.currentUser || !['teacher', 'admin'].includes(this.currentUser.role)) {
+            this.showAlert('Permesso negato: solo docenti o amministratori possono creare corsi', 'error');
+            return;
+        }
+
+        const formEl = document.getElementById('courseForm');
+        const formData = new FormData(formEl);
+        const courseData = Object.fromEntries(formData);
+
+        // Attach teacher_id from authenticated user (teachers enforced server-side)
+        const teacherId = this.currentUser.user_id || this.currentUser.id;
+        if (teacherId) courseData.teacher_id = String(teacherId);
+
+        // Normalize numeric fields
+        if (courseData.duration_hours) courseData.duration_hours = parseFloat(courseData.duration_hours);
+        if (courseData.num_lessons) courseData.num_lessons = parseInt(courseData.num_lessons);
+
+        try {
+            const res = await api.createCourse(courseData);
             this.showAlert('Corso creato con successo!', 'success');
-            document.getElementById('courseForm').reset();
+            formEl.reset();
+            // Refresh teacher dashboard view
+            this.loadTeacherDashboard();
         } catch (error) {
             this.showAlert('Errore nella creazione del corso: ' + error.message, 'error');
         }
@@ -295,11 +484,18 @@ class CourseApp {
             </div>
         ` : '';
 
-        const buttonHtml = showEnroll ? `
+        const actionHtml = showEnroll ? `
             <button class="btn btn-primary" onclick="app.enrollCourse(${course.id})">
                 Iscriviti
             </button>
-        ` : '';
+        ` : `
+            <button class="btn btn-secondary" onclick="app.viewCourse(${course.id})">
+                Focus Mode
+            </button>
+            <button class="btn btn-success" onclick="app.openBuddyModal(${course.id})">
+                <i class="fas fa-user-friends"></i> Buddy
+            </button>
+        `;
 
         card.innerHTML = `
             <div class="course-card-header">
@@ -313,11 +509,8 @@ class CourseApp {
                 </div>
                 <p class="course-description">${course.description || 'Nessuna descrizione'}</p>
                 ${progressHtml}
-                <div class="course-card-footer">
-                    ${buttonHtml}
-                    <button class="btn btn-secondary" onclick="app.viewCourse(${course.id})">
-                        Dettagli
-                    </button>
+                <div class="course-card-footer" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    ${actionHtml}
                 </div>
             </div>
         `;
@@ -335,13 +528,127 @@ class CourseApp {
         }
     }
 
-    viewCourse(courseId) {
-        // Implementare visualizzazione dettagli corso
+    async viewCourse(courseId) {
         console.log('View course:', courseId);
+        try {
+            const course = await api.getCourse(courseId);
+            const overlay = document.getElementById('focusModeOverlay');
+            if(overlay && course) {
+                document.getElementById('focusCourseTitle').textContent = course.title;
+                document.getElementById('focusLessonTitle').textContent = "Sessione Formativa (Focus Mode)";
+                overlay.classList.remove('hidden');
+                
+                // init pomodoro
+                this.pomodoroTime = 25 * 60;
+                this.updatePomodoroDisplay();
+                document.getElementById('pomodoroState').textContent = 'Fase di Studio 🚀';
+            }
+        } catch(e) {
+            this.showAlert('Impossibile caricare corso', 'error');
+        }
+    }
+
+    async openBuddyModal(courseId) {
+        try {
+            const res = await api.getCourseBuddies(courseId);
+            const buddies = res.buddies || [];
+            
+            const modal = document.getElementById('studyBuddyModal');
+            const list = document.getElementById('buddiesList');
+            
+            list.innerHTML = '';
+            
+            if (buddies.length === 0) {
+                list.innerHTML = '<p>Nessun compagno trovato per questo corso al momento.</p>';
+            } else {
+                buddies.forEach(b => {
+                    // avoid showing ourselves if possible (mock might not match)
+                    if (this.currentUser && b.id === this.currentUser.id) return;
+                    
+                    const card = document.createElement('div');
+                    card.className = 'buddy-card';
+                    card.innerHTML = `
+                        <div class="buddy-info">
+                            <strong><i class="fas fa-user-circle"></i> ${b.full_name || b.username}</strong>
+                            <span>Progresso: ${b.progress_percentage}%</span>
+                        </div>
+                        <div class="buddy-action">
+                            <button class="btn btn-primary" onclick="app.showAlert('Richiesta inviata a ${b.username}', 'success')">Connetti</button>
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+            }
+            
+            modal.classList.remove('hidden');
+        } catch (e) {
+            this.showAlert('Errore nel caricamento compagni', 'error');
+        }
+    }
+
+    startPomodoro() {
+        if(this.pomodoroInterval) return;
+        this.pomodoroInterval = setInterval(() => {
+            if(this.pomodoroTime > 0) {
+                this.pomodoroTime--;
+                this.updatePomodoroDisplay();
+            } else {
+                this.pausePomodoro();
+                document.getElementById('pomodoroState').textContent = 'Pausa! ☕';
+                this.pomodoroTime = 5 * 60; // 5 min break
+                this.updatePomodoroDisplay();
+            }
+        }, 1000);
+    }
+
+    pausePomodoro() {
+        clearInterval(this.pomodoroInterval);
+        this.pomodoroInterval = null;
+    }
+
+    resetPomodoro() {
+        this.pausePomodoro();
+        this.pomodoroTime = 25 * 60;
+        this.updatePomodoroDisplay();
+        document.getElementById('pomodoroState').textContent = 'Fase di Studio 🚀';
+    }
+
+    updatePomodoroDisplay() {
+        const min = Math.floor(this.pomodoroTime / 60).toString().padStart(2, '0');
+        const sec = (this.pomodoroTime % 60).toString().padStart(2, '0');
+        const disp = document.getElementById('pomodoroDisplay');
+        if(disp) disp.textContent = `${min}:${sec}`;
     }
 
     async loadStudentsList() {
-        // Implementare lista studenti per docenti
+        try {
+            const container = document.getElementById('studentList');
+            if (!container) {
+                console.error('Element #studentList not found in HTML. Please add <div id="studentList" class="dashboard-section hidden"></div> to your HTML.');
+                this.showAlert('Errore: Contenitore lista studenti non trovato nell\'HTML', 'error');
+                return;
+            }
+            
+            container.innerHTML = '<p>Caricamento studenti...</p>';
+            // Implementazione futura: chiamata API per ottenere gli studenti iscritti ai corsi del docente
+            const students = []; // Mock per ora
+            
+            if (students.length === 0) {
+                container.innerHTML = '<p style="text-align:center; padding: 2rem; color: var(--text-secondary);">Nessuno studente iscritto ai tuoi corsi al momento.</p>';
+                return;
+            }
+
+            container.innerHTML = '';
+            students.forEach(s => {
+                const div = document.createElement('div');
+                div.className = 'student-card';
+                div.innerHTML = `<strong>${s.full_name}</strong> - ${s.email}`;
+                container.appendChild(div);
+            });
+        } catch (error) {
+            console.error('Error loading students list:', error);
+            this.showAlert('Errore nel caricamento della lista studenti', 'error');
+        }
     }
 
     showAlert(message, type = 'info') {

@@ -170,6 +170,25 @@ class APIClient {
         return this.request('GET', '/api/statistics/enrollments');
     }
 
+    // Paths endpoints
+    async getPaths() {
+        return this.request('GET', '/api/paths');
+    }
+
+    async getPathDetails(pathId) {
+        return this.request('GET', `/api/paths/${pathId}`);
+    }
+
+    // Study Buddy
+    async getCourseBuddies(courseId) {
+        return this.request('GET', `/api/courses/${courseId}/buddies`);
+    }
+
+    // Skills
+    async getUserSkills() {
+        return this.request('GET', '/api/users/skills');
+    }
+
     // Health check
     async healthCheck() {
         return this.request('GET', '/api/health');

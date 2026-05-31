@@ -464,10 +464,7 @@ static int request_handler(void *cls,
         
         // Accumulate POST data
         if (*upload_data_size > 0) {
-            size_t to_copy = (*upload_data_size < (pdata->capacity - pdata->size)) 
-                ? *upload_data_size 
-                : (pdata->capacity - pdata->size - 1);
-            
+            size_t to_copy = (*upload_data_size < (pdata->capacity - pdata->size)) ? *upload_data_size : (pdata->capacity - pdata->size - 1);
             memcpy(pdata->data + pdata->size, upload_data, to_copy);
             pdata->size += to_copy;
             pdata->data[pdata->size] = '\0';
@@ -556,37 +553,27 @@ static int request_handler(void *cls,
                 
                 // Find user by token in sessions table
                 sqlite3_stmt *stmt;
-                const char *query = "SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')";
+                const char *query = "SELECT u.id, u.username, u.email, u.role "
+                                    "FROM users u "
+                                    "JOIN sessions s ON u.id = s.user_id "
+                                    "WHERE s.token = ? AND s.expires_at > datetime('now')";
                 
                 if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
                     sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
                     
                     if (sqlite3_step(stmt) == SQLITE_ROW) {
-                        int user_id = sqlite3_column_int(stmt, 0);
-                        
-                        // Get user profile
-                        AuthUser user;
-                        memset(&user, 0, sizeof(AuthUser));
-                        
-                        if (db_get_user_by_id(db, user_id, &user)) {
-                            log_activity(user.user_id, "get_profile", "user", user.user_id, NULL);
-                            
-                            // Build response
-                            JSONBuilder *jb = json_create();
-                            json_start_object(jb);
-                            json_add_string(jb, "status", "success");
-                            json_add_int(jb, "user_id", user.user_id);
-                            json_add_string(jb, "username", user.username);
-                            json_add_string(jb, "email", user.email);
-                            json_add_string(jb, "role", user.role);
-                            json_end_object(jb);
-                            response = json_get_string(jb);
-                            json_free(jb);
-                            status = MHD_HTTP_OK;
-                        } else {
-                            response = json_error_response("User not found");
-                            status = MHD_HTTP_NOT_FOUND;
-                        }
+                        // Build response directly from the JOIN result
+                        JSONBuilder *jb = json_create();
+                        json_start_object(jb);
+                        json_add_string(jb, "status", "success");
+                        json_add_int(jb, "user_id", sqlite3_column_int(stmt, 0));
+                        json_add_string(jb, "username", (const char *)sqlite3_column_text(stmt, 1));
+                        json_add_string(jb, "email", (const char *)sqlite3_column_text(stmt, 2));
+                        json_add_string(jb, "role", (const char *)sqlite3_column_text(stmt, 3));
+                        json_end_object(jb);
+                        response = json_get_string(jb);
+                        json_free(jb);
+                        status = MHD_HTTP_OK;
                     } else {
                         response = json_error_response("Invalid or expired token");
                         status = MHD_HTTP_UNAUTHORIZED;
@@ -595,9 +582,11 @@ static int request_handler(void *cls,
                     sqlite3_finalize(stmt);
                 } else {
                     response = json_error_response("Database error");
+                    status = MHD_HTTP_INTERNAL_SERVER_ERROR;
                 }
             } else {
                 response = json_error_response("Invalid authorization header format");
+                status = MHD_HTTP_BAD_REQUEST;
             }
         }
         
@@ -681,6 +670,63 @@ static int request_handler(void *cls,
                 return MHD_YES;
             }
 
+            // Authorization: require Bearer token and teacher/admin role
+            const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
+            if (!auth_header || strncmp(auth_header, "Bearer ", 7) != 0) {
+                char *err = json_error_response("Authorization header missing or invalid");
+                send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+                free(err);
+                free(pdata->data);
+                free(pdata);
+                *con_cls = NULL;
+                return MHD_YES;
+            }
+
+            const char *token = auth_header + 7;
+            sqlite3_stmt *sstmt;
+            const char *squery = "SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')";
+            int author_id = 0;
+            if (sqlite3_prepare_v2(db, squery, -1, &sstmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_text(sstmt, 1, token, -1, SQLITE_STATIC);
+                if (sqlite3_step(sstmt) == SQLITE_ROW) {
+                    author_id = sqlite3_column_int(sstmt, 0);
+                }
+                sqlite3_finalize(sstmt);
+            }
+
+            if (author_id == 0) {
+                char *err = json_error_response("Invalid or expired token");
+                send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+                free(err);
+                free(pdata->data);
+                free(pdata);
+                *con_cls = NULL;
+                return MHD_YES;
+            }
+
+            // Get user role
+            char user_role[32] = "";
+            sqlite3_stmt *rstmt;
+            const char *rquery = "SELECT role FROM users WHERE id = ?";
+            if (sqlite3_prepare_v2(db, rquery, -1, &rstmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(rstmt, 1, author_id);
+                if (sqlite3_step(rstmt) == SQLITE_ROW) {
+                    const unsigned char *role_text = sqlite3_column_text(rstmt, 0);
+                    if (role_text) strncpy(user_role, (const char *)role_text, sizeof(user_role)-1);
+                }
+                sqlite3_finalize(rstmt);
+            }
+
+            if (strcmp(user_role, "teacher") != 0 && strcmp(user_role, "admin") != 0) {
+                char *err = json_error_response("Permission denied: only teachers or admins can create courses");
+                send_json_response(connection, err, MHD_HTTP_FORBIDDEN);
+                free(err);
+                free(pdata->data);
+                free(pdata);
+                *con_cls = NULL;
+                return MHD_YES;
+            }
+
             // Extract fields
             char *title = json_get_field(pdata->data, "title");
             char *description = json_get_field(pdata->data, "description");
@@ -690,12 +736,20 @@ static int request_handler(void *cls,
             char *duration_s = json_get_field(pdata->data, "duration_hours");
             char *num_lessons_s = json_get_field(pdata->data, "num_lessons");
 
-            if (!title || !description || !teacher_id_s) {
-                char *err = json_error_response("Missing required course fields");
+            if (!title || !description) {
+                char *err = json_error_response("Missing required course fields: title or description");
                 send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
                 free(err);
             } else {
-                int teacher_id = atoi(teacher_id_s);
+                int teacher_id = 0;
+                if (strcmp(user_role, "teacher") == 0) {
+                    // enforce teacher as the authenticated user
+                    teacher_id = author_id;
+                } else {
+                    // admin may specify teacher_id, otherwise use admin's id
+                    teacher_id = teacher_id_s ? atoi(teacher_id_s) : author_id;
+                }
+
                 double duration = duration_s ? atof(duration_s) : 0.0;
                 int num_lessons = num_lessons_s ? atoi(num_lessons_s) : 0;
 
@@ -712,10 +766,12 @@ static int request_handler(void *cls,
 
                     if (sqlite3_step(stmt) == SQLITE_DONE) {
                         int new_id = (int)sqlite3_last_insert_rowid(db);
+                        log_activity(author_id, "create_course", "course", new_id, title);
                         JSONBuilder *jb = json_create();
                         json_start_object(jb);
                         json_add_string(jb, "status", "success");
                         json_add_int(jb, "course_id", new_id);
+                        json_add_int(jb, "teacher_id", teacher_id);
                         json_end_object(jb);
                         char *resp = json_get_string(jb);
                         send_json_response(connection, resp, MHD_HTTP_CREATED);
@@ -753,8 +809,39 @@ static int request_handler(void *cls,
         if (strncmp(url, "/api/courses/", 13) == 0) {
             int course_id = atoi(url + 13);
 
+            // GET course buddies
+            if (strcmp(method, "GET") == 0 && strstr(url, "/buddies") != NULL) {
+                sqlite3_stmt *stmt;
+                const char *query = "SELECT u.id, u.username, u.full_name, e.progress_percentage "
+                                    "FROM enrollments e "
+                                    "JOIN users u ON e.student_id = u.id "
+                                    "WHERE e.course_id = ?";
+                if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                    sqlite3_bind_int(stmt, 1, course_id);
+                    JSONBuilder *jb = json_create();
+                    json_start_object(jb);
+                    json_start_array(jb, "buddies");
+                    while (sqlite3_step(stmt) == SQLITE_ROW) {
+                        json_start_object(jb);
+                        json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                        json_add_string(jb, "username", (const char *)sqlite3_column_text(stmt, 1));
+                        json_add_string(jb, "full_name", (const char *)sqlite3_column_text(stmt, 2));
+                        json_add_double(jb, "progress_percentage", sqlite3_column_double(stmt, 3));
+                        json_end_object(jb);
+                    }
+                    json_end_array(jb);
+                    json_end_object(jb);
+                    char *resp = json_get_string(jb);
+                    send_json_response(connection, resp, MHD_HTTP_OK);
+                    free(resp);
+                    json_free(jb);
+                    sqlite3_finalize(stmt);
+                    return MHD_YES;
+                }
+            }
+
             // GET specific course
-            if (strcmp(method, "GET") == 0) {
+            if (strcmp(method, "GET") == 0 && strstr(url, "/buddies") == NULL) {
                 sqlite3_stmt *stmt;
                 const char *query = "SELECT id, title, description, teacher_id, category, difficulty_level, duration_hours, num_lessons FROM courses WHERE id = ?";
                 if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
@@ -866,6 +953,221 @@ static int request_handler(void *cls,
                     }
                     sqlite3_finalize(stmt);
                 }
+                return MHD_YES;
+            }
+        }
+    }
+
+    // Paths endpoints
+    if (strncmp(url, "/api/paths", 10) == 0) {
+        // /api/paths
+        if (strcmp(url, "/api/paths") == 0 && strcmp(method, "GET") == 0) {
+            sqlite3_stmt *stmt;
+            const char *query = "SELECT id, title, description, teacher_id FROM paths";
+            if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                JSONBuilder *jb = json_create();
+                json_start_object(jb);
+                json_start_array(jb, "paths");
+                while (sqlite3_step(stmt) == SQLITE_ROW) {
+                    json_start_object(jb);
+                    json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                    json_add_string(jb, "title", (const char *)sqlite3_column_text(stmt, 1));
+                    json_add_string(jb, "description", (const char *)sqlite3_column_text(stmt, 2));
+                    json_add_int(jb, "teacher_id", sqlite3_column_int(stmt, 3));
+                    json_end_object(jb);
+                }
+                json_end_array(jb);
+                json_end_object(jb);
+                char *resp = json_get_string(jb);
+                send_json_response(connection, resp, MHD_HTTP_OK);
+                free(resp);
+                json_free(jb);
+                sqlite3_finalize(stmt);
+                return MHD_YES;
+            } else {
+                char *err = json_error_response("Database error listing paths");
+                send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+                free(err);
+                return MHD_YES;
+            }
+        }
+        
+        if (strncmp(url, "/api/paths/", 11) == 0 && strcmp(method, "GET") == 0) {
+            int path_id = atoi(url + 11);
+            sqlite3_stmt *stmt;
+            const char *query = "SELECT id, title, description, teacher_id FROM paths WHERE id = ?";
+            if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, path_id);
+                if (sqlite3_step(stmt) == SQLITE_ROW) {
+                    JSONBuilder *jb = json_create();
+                    json_start_object(jb);
+                    json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                    json_add_string(jb, "title", (const char *)sqlite3_column_text(stmt, 1));
+                    json_add_string(jb, "description", (const char *)sqlite3_column_text(stmt, 2));
+                    json_add_int(jb, "teacher_id", sqlite3_column_int(stmt, 3));
+                    json_end_object(jb);
+                    char *resp = json_get_string(jb);
+                    send_json_response(connection, resp, MHD_HTTP_OK);
+                    free(resp);
+                    json_free(jb);
+                } else {
+                    char *err = json_error_response("Path not found");
+                    send_json_response(connection, err, MHD_HTTP_NOT_FOUND);
+                    free(err);
+                }
+                sqlite3_finalize(stmt);
+                return MHD_YES;
+            }
+        }
+    }
+
+    // Tasks and Quizzes endpoints
+    if (strncmp(url, "/api/tasks", 9) == 0) {
+        // POST /api/tasks - Create a task or quiz
+        if (strcmp(url, "/api/tasks") == 0 && strcmp(method, "POST") == 0) {
+            PostData *pdata = (PostData *)*con_cls;
+            if (pdata == NULL) {
+                pdata = (PostData *)malloc(sizeof(PostData));
+                pdata->data = (char *)malloc(MAX_POST_SIZE);
+                pdata->size = 0;
+                pdata->capacity = MAX_POST_SIZE;
+                *con_cls = (void *)pdata;
+                return MHD_YES;
+            }
+            if (*upload_data_size > 0) {
+                size_t to_copy = (*upload_data_size < (pdata->capacity - pdata->size)) ? *upload_data_size : (pdata->capacity - pdata->size - 1);
+                memcpy(pdata->data + pdata->size, upload_data, to_copy);
+                pdata->size += to_copy;
+                pdata->data[pdata->size] = '\0';
+                *upload_data_size = 0;
+                return MHD_YES;
+            }
+
+            const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
+            if (!auth_header || strncmp(auth_header, "Bearer ", 7) != 0) {
+                char *err = json_error_response("Authorization required");
+                send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+                free(err);
+                free(pdata->data); free(pdata); *con_cls = NULL;
+                return MHD_YES;
+            }
+
+            int author_id = 0;
+            sqlite3_stmt *sstmt;
+            if (sqlite3_prepare_v2(db, "SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')", -1, &sstmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_text(sstmt, 1, auth_header + 7, -1, SQLITE_STATIC);
+                if (sqlite3_step(sstmt) == SQLITE_ROW) author_id = sqlite3_column_int(sstmt, 0);
+                sqlite3_finalize(sstmt);
+            }
+
+            if (author_id == 0) {
+                char *err = json_error_response("Invalid session");
+                send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+                free(err);
+                free(pdata->data); free(pdata); *con_cls = NULL;
+                return MHD_YES;
+            }
+
+            char role[32] = "";
+            sqlite3_stmt *rstmt;
+            if (sqlite3_prepare_v2(db, "SELECT role FROM users WHERE id = ?", -1, &rstmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(rstmt, 1, author_id);
+                if (sqlite3_step(rstmt) == SQLITE_ROW) strncpy(role, (const char *)sqlite3_column_text(rstmt, 0), 31);
+                sqlite3_finalize(rstmt);
+            }
+
+            if (strcmp(role, "teacher") != 0 && strcmp(role, "admin") != 0) {
+                char *err = json_error_response("Only teachers can create tasks");
+                send_json_response(connection, err, MHD_HTTP_FORBIDDEN);
+                free(err);
+                free(pdata->data); free(pdata); *con_cls = NULL;
+                return MHD_YES;
+            }
+
+            char *title = json_get_field(pdata->data, "title");
+            char *description = json_get_field(pdata->data, "description");
+            char *course_id_s = json_get_field(pdata->data, "course_id");
+            char *type = json_get_field(pdata->data, "task_type");
+            char *due_date = json_get_field(pdata->data, "due_date");
+            char *points_s = json_get_field(pdata->data, "points");
+
+            if (!title || !course_id_s || !type) {
+                char *err = json_error_response("Missing required fields");
+                send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
+                free(err);
+            } else {
+                int course_id = atoi(course_id_s);
+                int points = points_s ? atoi(points_s) : 0;
+                sqlite3_stmt *stmt;
+                const char *query = "INSERT INTO tasks (course_id, teacher_id, title, description, due_date, points, task_type) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                    sqlite3_bind_int(stmt, 1, course_id);
+                    sqlite3_bind_int(stmt, 2, author_id);
+                    sqlite3_bind_text(stmt, 3, title, -1, SQLITE_STATIC);
+                    sqlite3_bind_text(stmt, 4, description ? description : "", -1, SQLITE_STATIC);
+                    sqlite3_bind_text(stmt, 5, due_date ? due_date : "", -1, SQLITE_STATIC);
+                    sqlite3_bind_int(stmt, 6, points);
+                    sqlite3_bind_text(stmt, 7, type, -1, SQLITE_STATIC);
+
+                    if (sqlite3_step(stmt) == SQLITE_DONE) {
+                        int task_id = (int)sqlite3_last_insert_rowid(db);
+                        JSONBuilder *jb = json_create();
+                        json_start_object(jb);
+                        json_add_string(jb, "status", "success");
+                        json_add_int(jb, "task_id", task_id);
+                        json_end_object(jb);
+                        char *resp = json_get_string(jb);
+                        send_json_response(connection, resp, MHD_HTTP_CREATED);
+                        free(resp);
+                        json_free(jb);
+                    } else {
+                        char *err = json_error_response("Failed to create task");
+                        send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+                        free(err);
+                    }
+                    sqlite3_finalize(stmt);
+                }
+            }
+            if (title) free(title); if (description) free(description); if (course_id_s) free(course_id_s);
+            if (type) free(type); if (due_date) free(due_date); if (points_s) free(points_s);
+            free(pdata->data); free(pdata); *con_cls = NULL;
+            return MHD_YES;
+        }
+
+        // GET /api/tasks?course_id=X
+        if (strcmp(url, "/api/tasks") == 0 && strcmp(method, "GET") == 0) {
+            const char *course_id_param = MHD_lookup_connection_value(connection, MHD_GET_ARG_KIND, "course_id");
+            if (!course_id_param) {
+                char *err = json_error_response("course_id parameter required");
+                send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
+                free(err);
+                return MHD_YES;
+            }
+            int course_id = atoi(course_id_param);
+            sqlite3_stmt *stmt;
+            const char *query = "SELECT id, title, description, due_date, points, task_type FROM tasks WHERE course_id = ?";
+            if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, course_id);
+                JSONBuilder *jb = json_create();
+                json_start_object(jb);
+                json_start_array(jb, "tasks");
+                while (sqlite3_step(stmt) == SQLITE_ROW) {
+                    json_start_object(jb);
+                    json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                    json_add_string(jb, "title", (const char *)sqlite3_column_text(stmt, 1));
+                    json_add_string(jb, "description", (const char *)sqlite3_column_text(stmt, 2));
+                    json_add_string(jb, "due_date", (const char *)sqlite3_column_text(stmt, 3));
+                    json_add_int(jb, "points", sqlite3_column_int(stmt, 4));
+                    json_add_string(jb, "task_type", (const char *)sqlite3_column_text(stmt, 5));
+                    json_end_object(jb);
+                }
+                json_end_array(jb);
+                json_end_object(jb);
+                char *resp = json_get_string(jb);
+                send_json_response(connection, resp, MHD_HTTP_OK);
+                free(resp);
+                json_free(jb);
+                sqlite3_finalize(stmt);
                 return MHD_YES;
             }
         }

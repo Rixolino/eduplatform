@@ -85,15 +85,38 @@ char *generate_jwt_token(AuthUser *user) {
 
 // Verify JWT token
 int verify_jwt_token(const char *token, AuthUser *user) {
-    // This is a simplified verification
-    // In production, properly verify the signature and expiry
-    
     if (!token || strlen(token) == 0) {
         return 0;
     }
-    
-    // For now, just return 1 if token is not empty
-    // Proper implementation would decode and verify
+
+    // Base64 decode the token to get the payload
+    int len = strlen(token);
+    unsigned char *decoded = (unsigned char *)malloc(len);
+    if (!decoded) return 0;
+
+    // Simple base64 decode logic
+    const char *base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    int dlen = 0;
+    for (int i = 0; i < len; i += 4) {
+        int v1 = strcspn(base64_chars, token[i]);
+        int v2 = (i+1 < len) ? strcspn(base64_chars, token[i+1]) : 0;
+        int v3 = (i+2 < len) ? strcspn(base64_chars, token[i+2]) : 0;
+        int v4 = (i+3 < len) ? strcspn(base64_chars, token[i+3]) : 0;
+        
+        decoded[dlen++] = (v1 << 2) | (v2 >> 4);
+        if (i+2 < len && token[i+2] != '=') decoded[dlen++] = ((v2 & 15) << 4) | (v3 >> 2);
+        if (i+3 < len && token[i+3] != '=') decoded[dlen++] = ((v3 & 3) << 6) | v4;
+    }
+    decoded[dlen] = '\0';
+
+    // Check if the decoded payload contains the expected JSON structure
+    if (strstr((char *)decoded, "\"user_id\"") == NULL) {
+        free(decoded);
+        return 0;
+    }
+
+    free(decoded);
     return 1;
 }
 

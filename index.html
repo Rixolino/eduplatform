@@ -9,54 +9,110 @@
 </head>
 <body>
     <div id="app" class="app-container">
-        <!-- Navigation Bar -->
-        <nav class="navbar" id="navbar">
-            <div class="navbar-container">
-                <a href="#home" class="navbar-brand" id="navLogo">
-                    <i class="fas fa-graduation-cap"></i>
-                    <span>EduPlatform</span>
-                </a>
-                <ul class="navbar-menu" id="navbarMenu">
-                    <li><a href="#home">Home</a></li>
-                    <li><a href="#" id="navLogin">Login</a></li>
-                    <li><a href="#" id="navRegister">Registrati</a></li>
-                </ul>
-            </div>
-        </nav>
+        <!-- Header Placeholder -->
+        <div id="header-placeholder"></div>
 
         <!-- Landing Page -->
         <div id="landingPage" class="page">
             <section class="hero">
-                <div class="hero-content">
-                    <h1>Piattaforma Corsi Online</h1>
-                    <p>Scopri, impara e cresci con i nostri corsi di qualità</p>
-                    <div class="hero-buttons">
-                        <button class="btn btn-primary" id="btnHeroLogin">Accedi</button>
-                        <button class="btn btn-secondary" id="btnHeroRegister">Registrati</button>
+                <div class="hero-container">
+                    <div class="hero-text-area">
+                        <div class="hero-badge">🚀 Novità: Intelligenza Artificiale per tutti</div>
+                        <h1>Impara senza limiti.<br><span class="text-gradient">Crea il tuo futuro.</span></h1>
+                        <p>La piattaforma e-learning definitiva. Videocorsi di altissima qualità, docenti d'eccellenza e certificazioni riconosciute a livello globale per accelerare la tua carriera.</p>
+                        <div class="hero-buttons">
+                            <button class="btn btn-primary btn-lg" id="btnHeroRegister">Inizia Ora <i class="fas fa-arrow-right"></i></button>
+                            <button class="btn btn-secondary btn-lg" id="btnHeroLogin">Accedi <i class="fas fa-sign-in-alt"></i></button>
+                        </div>
+                        <div class="hero-stats">
+                            <div class="hero-stat-item">
+                                <span class="stat-num">500+</span>
+                                <span class="stat-lbl">Corsi Premium</span>
+                            </div>
+                            <div class="hero-stat-divider"></div>
+                            <div class="hero-stat-item">
+                                <span class="stat-num">50k</span>
+                                <span class="stat-lbl">Studenti</span>
+                            </div>
+                            <div class="hero-stat-divider"></div>
+                            <div class="hero-stat-item">
+                                <span class="stat-num">4.9</span>
+                                <span class="stat-lbl">Rating ⭐</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hero-visual">
+                        <div class="hero-shape-bg"></div>
+                        <div class="hero-floating-card top-card">
+                            <i class="fas fa-code"></i>
+                            <div>
+                                <strong>Sviluppo Web</strong>
+                                <span>+45 nuovi corsi</span>
+                            </div>
+                        </div>
+                        <div class="hero-main-visual">
+                            <i class="fas fa-laptop-code main-icon"></i>
+                        </div>
+                        <div class="hero-floating-card bottom-card">
+                            <div class="avatars">
+                                <i class="fas fa-user-circle"></i>
+                                <i class="fas fa-user-circle"></i>
+                                <i class="fas fa-user-circle"></i>
+                            </div>
+                            <div>
+                                <strong>Community</strong>
+                                <span>Unisciti a noi</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
 
+            <section class="trusted-by">
+                <p>AZIENDE CHE ASSUMONO I NOSTRI STUDENTI</p>
+                <div class="logos">
+                    <i class="fab fa-microsoft"></i>
+                    <i class="fab fa-amazon"></i>
+                    <i class="fab fa-google"></i>
+                    <i class="fab fa-apple"></i>
+                    <i class="fab fa-meta"></i>
+                </div>
+            </section>
+
             <section class="features">
-                <div class="feature-card">
-                    <i class="fas fa-book"></i>
-                    <h3>Corsi Completi</h3>
-                    <p>Accedi a una vasta gamma di corsi professionali</p>
+                <div class="section-title">
+                    <h2>Un metodo di studio rivoluzionario</h2>
+                    <p>Tutto ciò che ti serve per passare da principiante a professionista richiesto dal mercato.</p>
                 </div>
-                <div class="feature-card">
-                    <i class="fas fa-users"></i>
-                    <h3>Docenti Esperti</h3>
-                    <p>Impara da professionisti del settore</p>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-video"></i></div>
+                        <h3>Contenuti 4K</h3>
+                        <p>Lezioni video cristalline, materiale didattico scaricabile e quiz interattivi ad ogni modulo.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-laptop-house"></i></div>
+                        <h3>Pratica Immediata</h3>
+                        <p>Ambienti di sviluppo integrati per scrivere codice o svolgere esercizi direttamente nel browser.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-award"></i></div>
+                        <h3>Certificati Ufficiali</h3>
+                        <p>Ottieni un attestato valido verificabile su LinkedIn al completamento di ogni percorso.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-chalkboard-teacher"></i></div>
+                        <h3>Mentorship</h3>
+                        <p>Sessioni live mensili e supporto Q&A diretto con i docenti per non bloccarti mai.</p>
+                    </div>
                 </div>
-                <div class="feature-card">
-                    <i class="fas fa-chart-line"></i>
-                    <h3>Traccia Progresso</h3>
-                    <p>Monitora il tuo avanzamento in tempo reale</p>
-                </div>
-                <div class="feature-card">
-                    <i class="fas fa-certificate"></i>
-                    <h3>Certificati</h3>
-                    <p>Ottieni certificati al completamento dei corsi</p>
+            </section>
+
+            <section class="cta-section">
+                <div class="cta-content">
+                    <h2>Pronto a dare una svolta alla tua carriera?</h2>
+                    <p>Unisciti a migliaia di studenti che hanno già cambiato vita e trovato il lavoro dei loro sogni grazie a EduPlatform.</p>
+                    <button class="btn btn-primary btn-lg" onclick="document.getElementById('navRegister').click()">Crea un Account Gratuito</button>
                 </div>
             </section>
         </div>
@@ -124,11 +180,13 @@
             <div class="dashboard-container">
                 <aside class="sidebar">
                     <ul class="sidebar-menu">
-                        <li><a href="#" data-page="dashboard">Dashboard</a></li>
-                        <li><a href="#" data-page="courses">Catalogo Corsi</a></li>
-                        <li><a href="#" data-page="my-courses">I Miei Corsi</a></li>
-                        <li><a href="#" data-page="progress">Progresso</a></li>
-                        <li><a href="#" id="btnLogout">Logout</a></li>
+                        <li><a href="#" data-page="dashboard"><i class="fas fa-home"></i> Dashboard</a></li>
+                        <li><a href="#" data-page="courses"><i class="fas fa-search"></i> Esplora Corsi</a></li>
+                        <li><a href="#" data-page="paths"><i class="fas fa-route"></i> Percorsi Formativi</a></li>
+                        <li><a href="#" data-page="my-courses"><i class="fas fa-book-open"></i> I Miei Corsi</a></li>
+                        <li><a href="#" data-page="progress"><i class="fas fa-chart-bar"></i> I Miei Progressi</a></li>
+                        <li class="sidebar-divider"></li>
+                        <li><a href="#" class="logout-btn" id="btnLogout"><i class="fas fa-sign-out-alt"></i> Disconnetti</a></li>
                     </ul>
                 </aside>
                 <main class="dashboard-content">
@@ -149,6 +207,25 @@
                                 <p id="statCompleted" class="stat-value">0</p>
                             </div>
                         </div>
+
+                        <!-- Skill Graph -->
+                        <div class="stats-grid" style="margin-top: 2rem;">
+                            <div class="stat-card" style="grid-column: 1 / -1; align-items: center;">
+                                <h3>La Tua Mappa delle Competenze (Skill Graph 📊)</h3>
+                                <div style="width: 100%; text-align: center; margin: 0 auto; min-height: 200px;">
+                                    <div class="mermaid" id="skillGraphCanvas">
+                                        %% Skill graph will be rendered here
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Paths Catalog -->
+                    <div id="pathsCatalog" class="dashboard-section hidden">
+                        <h2>Percorsi Formativi</h2>
+                        <p>Segui una roadmap predefinita per raggiungere i tuoi obiettivi.</p>
+                        <div id="pathsList" class="courses-grid"></div>
                     </div>
 
                     <!-- Courses Catalog -->
@@ -180,6 +257,12 @@
                         <h2>Il Mio Progresso</h2>
                         <div id="progressStats"></div>
                     </div>
+
+                    <!-- Student List -->
+                    <div id="studentList" class="dashboard-section hidden">
+                        <h2>I Miei Studenti</h2>
+                        <div id="studentsContainer"></div>
+                    </div>
                 </main>
             </div>
         </div>
@@ -189,11 +272,12 @@
             <div class="dashboard-container">
                 <aside class="sidebar">
                     <ul class="sidebar-menu">
-                        <li><a href="#" data-page="teacher-dashboard">Dashboard</a></li>
-                        <li><a href="#" data-page="my-courses">I Miei Corsi</a></li>
-                        <li><a href="#" data-page="create-course">Crea Corso</a></li>
-                        <li><a href="#" data-page="students">Studenti</a></li>
-                        <li><a href="#" id="btnLogout">Logout</a></li>
+                        <li><a href="#" data-page="teacher-dashboard"><i class="fas fa-chalkboard-teacher"></i> Dashboard Docente</a></li>
+                        <li><a href="#" data-page="teacher-courses"><i class="fas fa-layer-group"></i> Gestisci Corsi</a></li>
+                        <li><a href="#" data-page="create-course"><i class="fas fa-plus-circle"></i> Crea Nuovo Corso</a></li>
+                        <li><a href="#" data-page="students"><i class="fas fa-user-graduate"></i> I Miei Studenti</a></li>
+                        <li class="sidebar-divider"></li>
+                        <li><a href="#" class="logout-btn" id="btnLogout"><i class="fas fa-sign-out-alt"></i> Disconnetti</a></li>
                     </ul>
                 </aside>
                 <main class="dashboard-content">
@@ -214,10 +298,11 @@
                                 <p id="teacherStatRating" class="stat-value">0.0</p>
                             </div>
                         </div>
+                        <div id="teacherCoursesList" class="courses-grid" style="margin-top: 2rem;"></div>
                     </div>
 
                     <!-- Create Course Form -->
-                    <div id="createCourseForm" class="dashboard-section hidden">
+                    <div id="createCourseFormContainer" class="dashboard-section hidden">
                         <h2>Crea Nuovo Corso</h2>
                         <form id="courseForm">
                             <div class="form-group">
@@ -247,11 +332,94 @@
                             <button type="submit" class="btn btn-primary">Crea Corso</button>
                         </form>
                     </div>
+
+                    <!-- Create Task/Quiz Form -->
+                    <div id="taskFormContainer" class="dashboard-section hidden">
+                        <h2 id="taskFormTitle">Crea Task / Quiz</h2>
+                        <form id="taskForm">
+                            <input type="hidden" id="taskCourseId" name="course_id">
+                            <div class="form-group">
+                                <label>Titolo Task</label>
+                                <input type="text" name="title" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Descrizione / Istruzioni</label>
+                                <textarea name="description" rows="3"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo di Task</label>
+                                <select name="task_type" required>
+                                    <option value="assignment">Consegna (Assignment)</option>
+                                    <option value="quiz">Quiz Interattivo</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Data di Scadenza</label>
+                                <input type="date" name="due_date">
+                            </div>
+                            <div class="form-group">
+                                <label>Punteggio</label>
+                                <input type="number" name="points" value="0">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Pubblica Task</button>
+                            <button type="button" class="btn btn-secondary" onclick="app.showPage('teacher-dashboard')">Annulla</button>
+                        </form>
+                    </div>
+
+                    <!-- Teacher's Courses List -->
+                    <div id="teacherCoursesList" class="dashboard-section hidden">
+                        <h2>I Miei Corsi Creati</h2>
+                        <div class="courses-grid"></div>
+                    </div>
+
+                    <!-- Teacher's Students List -->
+                    <div id="studentList" class="dashboard-section hidden">
+                        <h2>I Miei Studenti</h2>
+                        <div id="studentsContainer" class="students-grid"></div>
+                    </div>
                 </main>
             </div>
         </div>
+        
+        <!-- Footer Placeholder -->
+        <div id="footer-placeholder"></div>
+
+        <!-- Focus Mode Overlay -->
+        <div id="focusModeOverlay" class="hidden">
+            <div class="focus-container">
+                <button id="btnExitFocus" class="btn btn-secondary">Esci da Focus Mode</button>
+                <div class="focus-content">
+                    <h2 id="focusCourseTitle">Titolo Corso</h2>
+                    <h3 id="focusLessonTitle">Titolo Lezione</h3>
+                    <div class="pomodoro-timer">
+                        <div id="pomodoroDisplay" class="timer-display">25:00</div>
+                        <p id="pomodoroState">Fase di Studio</p>
+                        <div class="timer-controls">
+                            <button id="btnTimerStart" class="btn btn-primary"><i class="fas fa-play"></i> Inizia</button>
+                            <button id="btnTimerPause" class="btn btn-secondary"><i class="fas fa-pause"></i> Pausa</button>
+                            <button id="btnTimerReset" class="btn btn-secondary"><i class="fas fa-redo"></i> Reset</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Study Buddy Modal -->
+        <div id="studyBuddyModal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close-btn" id="closeBuddyModal">&times;</span>
+                <h2>Trova Compagni di Studio</h2>
+                <p>Connettiti con altri studenti dello stesso corso!</p>
+                <div id="buddiesList" class="buddies-grid"></div>
+            </div>
+        </div>
+
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+    </script>
     <script src="api.js"></script>
     <script src="app.js"></script>
 </body>
