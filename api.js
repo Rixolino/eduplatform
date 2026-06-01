@@ -90,6 +90,10 @@ class APIClient {
         return this.request('GET', query);
     }
 
+    async getCourseTasks(courseId) {
+        return this.request('GET', `/api/tasks?course_id=${courseId}`);
+    }
+
     async getCourse(courseId) {
         return this.request('GET', `/api/courses/${courseId}`);
     }

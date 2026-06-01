@@ -503,12 +503,15 @@ class CourseApp {
         ` : '';
 
         const actionHtml = showEnroll ? `
+            <button class="btn btn-secondary" onclick="app.viewCourse(${course.id})">
+                Dettagli
+            </button>
             <button class="btn btn-primary" onclick="app.enrollCourse(${course.id})">
                 Iscriviti
             </button>
         ` : `
             <button class="btn btn-secondary" onclick="app.viewCourse(${course.id})">
-                Focus Mode
+                Apri Corso
             </button>
             <button class="btn btn-success" onclick="app.openBuddyModal(${course.id})">
                 <i class="fas fa-user-friends"></i> Buddy
@@ -516,8 +519,8 @@ class CourseApp {
         `;
 
         card.innerHTML = `
-            <div class="course-card-header">
-                <h3>${course.title}</h3>
+            <div class="course-card-header" style="cursor: pointer;" onclick="app.viewCourse(${course.id})">
+                <h3 style="color: var(--primary-color);">${course.title}</h3>
                 <p>${course.teacher_name || 'Docente'}</p>
             </div>
             <div class="course-card-body">
@@ -550,19 +553,116 @@ class CourseApp {
         console.log('View course:', courseId);
         try {
             const course = await api.getCourse(courseId);
-            const overlay = document.getElementById('focusModeOverlay');
-            if(overlay && course) {
-                document.getElementById('focusCourseTitle').textContent = course.title;
-                document.getElementById('focusLessonTitle').textContent = "Sessione Formativa (Focus Mode)";
-                overlay.classList.remove('hidden');
+            const tasks = await api.getCourseTasks(courseId);
+            
+            if (course) {
+                // Determine if user is teacher or student
+                const isTeacher = this.currentUser && this.currentUser.role === 'teacher';
                 
-                // init pomodoro
-                this.pomodoroTime = 25 * 60;
-                this.updatePomodoroDisplay();
-                document.getElementById('pomodoroState').textContent = 'Fase di Studio 🚀';
+                // Use appropriate IDs based on user role
+                const titleId = isTeacher ? 'cdTitleTeacher' : 'cdTitle';
+                const categoryId = isTeacher ? 'cdCategoryTeacher' : 'cdCategory';
+                const difficultyId = isTeacher ? 'cdDifficultyTeacher' : 'cdDifficulty';
+                const durationId = isTeacher ? 'cdDurationTeacher' : 'cdDuration';
+                const lessonsId = isTeacher ? 'cdLessonsTeacher' : 'cdLessons';
+                const descId = isTeacher ? 'cdDescriptionTeacher' : 'cdDescription';
+                const taskListId = isTeacher ? 'cdTaskListTeacher' : 'cdTaskList';
+                const detailsId = isTeacher ? 'courseDetailsTeacher' : 'courseDetails';
+                
+                // Populate course details
+                document.getElementById(titleId).textContent = course.title;
+                document.getElementById(categoryId).innerHTML = `<i class="fas fa-tag"></i> ${course.category || 'N/D'}`;
+                document.getElementById(difficultyId).innerHTML = `<i class="fas fa-signal"></i> ${course.difficulty_level || 'N/D'}`;
+                document.getElementById(durationId).innerHTML = `<i class="fas fa-clock"></i> ${course.duration_hours || 0} ore`;
+                document.getElementById(lessonsId).innerHTML = `<i class="fas fa-book"></i> ${course.num_lessons || 0} lezioni`;
+                document.getElementById(descId).textContent = course.description || 'Nessuna descrizione disponibile.';
+                
+                // Tasks
+                const taskList = document.getElementById(taskListId);
+                taskList.innerHTML = '';
+                if (tasks && tasks.tasks && tasks.tasks.length > 0) {
+                    tasks.tasks.forEach(task => {
+                        const taskCard = document.createElement('div');
+                        taskCard.className = 'course-card';
+                        taskCard.innerHTML = `
+                            <div class="course-content">
+                                <h3 class="course-title">${task.title} <span class="badge" style="font-size: 0.7em; background: var(--bg-color); color: var(--primary-color); float: right;">${task.task_type.toUpperCase()}</span></h3>
+                                <p class="course-description">${task.description || 'Nessuna descrizione'}</p>
+                                <div class="course-meta">
+                                    <span><i class="fas fa-calendar"></i> Scadenza: ${task.due_date ? new Date(task.due_date).toLocaleDateString() : 'N/D'}</span>
+                                    <span><i class="fas fa-star"></i> Punti: ${task.points || 0}</span>
+                                </div>
+                            </div>
+                        `;
+                        taskList.appendChild(taskCard);
+                    });
+                } else {
+                    taskList.innerHTML = '<p style="color: var(--text-light);">Nessun task assegnato in questo corso.</p>';
+                }
+
+                // Setup buttons based on role
+                if (isTeacher) {
+                    const btnManageTasks = document.getElementById('cdManageTasksBtn');
+                    btnManageTasks.onclick = () => {
+                        this.showTaskCreation(courseId);
+                    };
+                } else {
+                    // Setup Focus Mode button for students
+                    const btnFocus = document.getElementById('cdFocusBtn');
+                    if (btnFocus) {
+                        btnFocus.onclick = () => {
+                            const overlay = document.getElementById('focusModeOverlay');
+                            if (overlay) {
+                                document.getElementById('focusCourseTitle').textContent = course.title;
+                                document.getElementById('focusLessonTitle').textContent = "Sessione Formativa (Focus Mode)";
+                                overlay.classList.remove('hidden');
+                                
+                                // init pomodoro
+                                this.pomodoroTime = 25 * 60;
+                                this.updatePomodoroDisplay();
+                                document.getElementById('pomodoroState').textContent = 'Fase di Studio 🚀';
+                            }
+                        };
+                    }
+                }
+
+                // Remember current visible section to go back
+                if (isTeacher) {
+                    this.previousDashboardSection = Array.from(document.querySelectorAll('#teacherDashboard .dashboard-section')).find(s => !s.classList.contains('hidden'))?.id;
+                } else {
+                    this.previousDashboardSection = Array.from(document.querySelectorAll('#studentDashboard .dashboard-section')).find(s => !s.classList.contains('hidden'))?.id;
+                }
+                
+                // Show the course details section
+                const detailsElement = document.getElementById(detailsId);
+                if (detailsElement) {
+                    if (isTeacher) {
+                        document.querySelectorAll('#teacherDashboard .dashboard-section').forEach(s => s.classList.add('hidden'));
+                    } else {
+                        document.querySelectorAll('#studentDashboard .dashboard-section').forEach(s => s.classList.add('hidden'));
+                    }
+                    detailsElement.classList.remove('hidden');
+                }
             }
         } catch(e) {
-            this.showAlert('Impossibile caricare corso', 'error');
+            console.error(e);
+            this.showAlert('Impossibile caricare i dettagli del corso', 'error');
+        }
+    }
+
+    closeCourseDetails() {
+        // Hide both possible course details sections
+        const courseDetails = document.getElementById('courseDetails');
+        const courseDetailsTeacher = document.getElementById('courseDetailsTeacher');
+        
+        if (courseDetails) courseDetails.classList.add('hidden');
+        if (courseDetailsTeacher) courseDetailsTeacher.classList.add('hidden');
+        
+        if (this.previousDashboardSection) {
+            document.getElementById(this.previousDashboardSection).classList.remove('hidden');
+        } else {
+            // fallback
+            this.showDashboardPage(this.currentUser.role === 'teacher' ? 'teacher-courses' : 'my-courses');
         }
     }
 

@@ -252,6 +252,31 @@
                         <div id="enrolledCoursesList" class="courses-grid"></div>
                     </div>
 
+                    <!-- Course Details -->
+                    <div id="courseDetails" class="dashboard-section hidden" style="background: white; padding: 2rem; border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                        <button class="btn btn-secondary" onclick="app.closeCourseDetails()" style="margin-bottom: 1.5rem;">
+                            <i class="fas fa-arrow-left"></i> Torna indietro
+                        </button>
+                        <h2 id="cdTitle" style="color: var(--primary-color); margin-bottom: 0.5rem;">Titolo Corso</h2>
+                        <div style="display: flex; gap: 1rem; color: var(--text-light); margin-bottom: 1.5rem; font-size: 0.9rem;">
+                            <span id="cdCategory"><i class="fas fa-tag"></i> Categoria</span>
+                            <span id="cdDifficulty"><i class="fas fa-signal"></i> Difficoltà</span>
+                            <span id="cdDuration"><i class="fas fa-clock"></i> Ore</span>
+                            <span id="cdLessons"><i class="fas fa-book"></i> Lezioni</span>
+                        </div>
+                        <div class="course-description" style="margin-bottom: 2rem; line-height: 1.6;">
+                            <h3>Descrizione</h3>
+                            <p id="cdDescription"></p>
+                        </div>
+                        <div class="course-actions" style="margin-bottom: 2rem;">
+                            <button class="btn btn-primary" id="cdFocusBtn"><i class="fas fa-play"></i> Entra in Focus Mode</button>
+                        </div>
+                        <div class="course-tasks">
+                            <h3 style="margin-bottom: 1rem;">Task e Assegnazioni</h3>
+                            <div id="cdTaskList" class="courses-grid"></div>
+                        </div>
+                    </div>
+
                     <!-- Progress Tracker -->
                     <div id="progressTracker" class="dashboard-section hidden">
                         <h2>Il Mio Progresso</h2>
@@ -370,6 +395,31 @@
                     <div id="teacherManageCourses" class="dashboard-section hidden">
                         <h2>I Miei Corsi Creati</h2>
                         <div id="managedCoursesList" class="courses-grid"></div>
+                    </div>
+
+                    <!-- Course Details (Teacher View) -->
+                    <div id="courseDetailsTeacher" class="dashboard-section hidden" style="background: white; padding: 2rem; border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                        <button class="btn btn-secondary" onclick="app.closeCourseDetails()" style="margin-bottom: 1.5rem;">
+                            <i class="fas fa-arrow-left"></i> Torna indietro
+                        </button>
+                        <h2 id="cdTitleTeacher" style="color: var(--primary-color); margin-bottom: 0.5rem;">Titolo Corso</h2>
+                        <div style="display: flex; gap: 1rem; color: var(--text-light); margin-bottom: 1.5rem; font-size: 0.9rem;">
+                            <span id="cdCategoryTeacher"><i class="fas fa-tag"></i> Categoria</span>
+                            <span id="cdDifficultyTeacher"><i class="fas fa-signal"></i> Difficoltà</span>
+                            <span id="cdDurationTeacher"><i class="fas fa-clock"></i> Ore</span>
+                            <span id="cdLessonsTeacher"><i class="fas fa-book"></i> Lezioni</span>
+                        </div>
+                        <div class="course-description" style="margin-bottom: 2rem; line-height: 1.6;">
+                            <h3>Descrizione</h3>
+                            <p id="cdDescriptionTeacher"></p>
+                        </div>
+                        <div class="course-actions" style="margin-bottom: 2rem;">
+                            <button class="btn btn-primary" id="cdManageTasksBtn"><i class="fas fa-tasks"></i> Gestisci Task & Quiz</button>
+                        </div>
+                        <div class="course-tasks">
+                            <h3 style="margin-bottom: 1rem;">Task e Assegnazioni</h3>
+                            <div id="cdTaskListTeacher" class="courses-grid"></div>
+                        </div>
                     </div>
 
                     <!-- Teacher's Students List -->
