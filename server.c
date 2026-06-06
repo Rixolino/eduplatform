@@ -1,3 +1,14 @@
+#ifdef _WIN32
+/* Impedisce a windows.h di includere il vecchio winsock.h */
+#define WIN32_LEAN_AND_MEAN
+/* Includi esplicitamente winsock2 prima di windows.h */
+#include <winsock2.h>
+#include <windows.h>
+#define sleep(x) Sleep((x) * 1000)
+#else
+#include <unistd.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,10 +22,15 @@
 #include "json_utils.h"
 
 #define PORT 5000
+
+/* Rimuove il warning di ridefinizione di MAX_PATH */
+#ifdef MAX_PATH
+#undef MAX_PATH
+#endif
 #define MAX_PATH 1024
+
 #define MAX_RESPONSE 16384
 #define MAX_POST_SIZE 8192
-
 void log_message(const char *format, ...);
 
 sqlite3 *db;
@@ -160,7 +176,7 @@ void send_json_response(struct MHD_Connection *connection, const char *json, int
     size_t json_len = strlen(json);
     char *json_copy = (char *)malloc(json_len + 1);
     strcpy(json_copy, json);
-    
+
     response = MHD_create_response_from_buffer(json_len,
                                               (void *)json_copy,
                                               MHD_RESPMEM_MUST_FREE);
@@ -175,30 +191,30 @@ void send_json_response(struct MHD_Connection *connection, const char *json, int
 // Simple JSON field extractor (no regex)
 char *json_get_field(const char *json, const char *field) {
     if (!json || !field) return NULL;
-    
+
     // Build search pattern: "fieldname":
     char pattern[512];
     snprintf(pattern, sizeof(pattern), "\"%s\":", field);
-    
+
     // Find the pattern
     const char *pos = strstr(json, pattern);
     if (!pos) return NULL;
-    
+
     // Move past the pattern to find the value
     pos += strlen(pattern);
-    
+
     // Skip whitespace
     while (*pos && isspace(*pos)) pos++;
-    
+
     // Check if value is a string (starts with ")
     if (*pos != '"') return NULL;
-    
+
     pos++; // Skip opening quote
-    
+
     // Find closing quote (handle escaping)
     char *result = (char *)malloc(512);
     int idx = 0;
-    
+
     while (*pos && idx < 511) {
         if (*pos == '"' && (idx == 0 || result[idx-1] != '\\')) {
             // Found closing quote
@@ -208,7 +224,7 @@ char *json_get_field(const char *json, const char *field) {
         result[idx++] = *pos;
         pos++;
     }
-    
+
     free(result);
     return NULL;
 }
@@ -217,13 +233,13 @@ char *json_get_field(const char *json, const char *field) {
 void log_activity(int user_id, const char *action, const char *resource_type, int resource_id, const char *details) {
     sqlite3_stmt *stmt;
     const char *query = "INSERT INTO activity_log (user_id, action, resource_type, resource_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)";
-    
+
     int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_message("ERROR: Failed to prepare activity_log insert: %s", sqlite3_errmsg(db));
         return;
     }
-    
+
     sqlite3_bind_int(stmt, 1, user_id);
     sqlite3_bind_text(stmt, 2, action, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 3, resource_type, -1, SQLITE_STATIC);
@@ -234,11 +250,11 @@ void log_activity(int user_id, const char *action, const char *resource_type, in
     }
     sqlite3_bind_text(stmt, 5, details ? details : "", -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 6, "127.0.0.1", -1, SQLITE_STATIC);
-    
+
     if (sqlite3_step(stmt) != SQLITE_DONE) {
         log_message("ERROR: Failed to log activity: %s", sqlite3_errmsg(db));
     }
-    
+
     sqlite3_finalize(stmt);
 }
 
@@ -246,15 +262,15 @@ void log_activity(int user_id, const char *action, const char *resource_type, in
 int store_session(int user_id, const char *token) {
     sqlite3_stmt *stmt;
     const char *query = "INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, datetime('now', '+24 hours'))";
-    
+
     int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         return 0;
     }
-    
+
     sqlite3_bind_int(stmt, 1, user_id);
     sqlite3_bind_text(stmt, 2, token, -1, SQLITE_STATIC);
-    
+
     int result = sqlite3_step(stmt) == SQLITE_DONE;
     sqlite3_finalize(stmt);
     return result;
@@ -263,18 +279,18 @@ int store_session(int user_id, const char *token) {
 // Validate email format (simple check)
 int is_valid_email(const char *email) {
     if (!email || strlen(email) < 5) return 0;
-    
+
     // Check for @ and .
     const char *at = strchr(email, '@');
     if (!at) return 0;
-    
+
     // Check for @ position
     if (at == email || *(at + 1) == '\0') return 0;
-    
+
     // Check for dot after @
     const char *dot = strchr(at + 1, '.');
     if (!dot || dot == at + 1) return 0;
-    
+
     // Check for valid characters (simple check)
     return 1;
 }
@@ -283,14 +299,14 @@ int is_valid_email(const char *email) {
 int username_exists(const char *username) {
     sqlite3_stmt *stmt;
     const char *query = "SELECT 1 FROM users WHERE username = ? LIMIT 1";
-    
+
     int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         return 0;
     }
-    
+
     sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
-    
+
     int exists = sqlite3_step(stmt) == SQLITE_ROW;
     sqlite3_finalize(stmt);
     return exists;
@@ -300,14 +316,14 @@ int username_exists(const char *username) {
 int email_exists(const char *email) {
     sqlite3_stmt *stmt;
     const char *query = "SELECT 1 FROM users WHERE email = ? LIMIT 1";
-    
+
     int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         return 0;
     }
-    
+
     sqlite3_bind_text(stmt, 1, email, -1, SQLITE_STATIC);
-    
+
     int exists = sqlite3_step(stmt) == SQLITE_ROW;
     sqlite3_finalize(stmt);
     return exists;
@@ -324,16 +340,16 @@ static enum MHD_Result request_handler(void *cls,
                           void **con_cls) {
     (void)cls;
     (void)version;
-    
+
     log_message("%s %s", method, url);
-    
+
     // OPTIONS per CORS
     if (strcmp(method, "OPTIONS") == 0) {
         const char *response = "{}";
         send_json_response(connection, response, MHD_HTTP_OK);
         return MHD_YES;
     }
-    
+
     // Serve static files for non-API GET requests
     if (strcmp(method, "GET") == 0 && strncmp(url, "/api/", 5) != 0) {
         if (serve_static_file(connection, url) == MHD_YES) {
@@ -347,18 +363,18 @@ static enum MHD_Result request_handler(void *cls,
         send_json_response(connection, response, MHD_HTTP_OK);
         return MHD_YES;
     }
-    
+
     // Health check
     if (strcmp(url, "/api/health") == 0) {
         const char *response = "{\"status\": \"healthy\", \"message\": \"API is running\"}";
         send_json_response(connection, response, MHD_HTTP_OK);
         return MHD_YES;
     }
-    
+
     // Registration endpoint
     if (strcmp(url, "/api/users/register") == 0 && strcmp(method, "POST") == 0) {
         PostData *pdata = (PostData *)*con_cls;
-        
+
         // First call - initialize post data structure
         if (pdata == NULL) {
             pdata = (PostData *)malloc(sizeof(PostData));
@@ -368,30 +384,30 @@ static enum MHD_Result request_handler(void *cls,
             *con_cls = (void *)pdata;
             return MHD_YES;
         }
-        
+
         // Accumulate POST data
         if (*upload_data_size > 0) {
-            size_t to_copy = (*upload_data_size < (pdata->capacity - pdata->size)) 
-                ? *upload_data_size 
+            size_t to_copy = (*upload_data_size < (pdata->capacity - pdata->size))
+                ? *upload_data_size
                 : (pdata->capacity - pdata->size - 1);
-            
+
             memcpy(pdata->data + pdata->size, upload_data, to_copy);
             pdata->size += to_copy;
             pdata->data[pdata->size] = '\0';
             *upload_data_size = 0;
             return MHD_YES;
         }
-        
+
         // Process POST data
         char *username = json_get_field(pdata->data, "username");
         char *email = json_get_field(pdata->data, "email");
         char *password = json_get_field(pdata->data, "password");
         char *full_name = json_get_field(pdata->data, "full_name");
         char *role = json_get_field(pdata->data, "role");
-        
+
         char *response = NULL;
         int status = MHD_HTTP_BAD_REQUEST;
-        
+
         // Validate inputs
         if (!username || strlen(username) < 3) {
             response = json_error_response("Username must be at least 3 characters");
@@ -418,7 +434,7 @@ static enum MHD_Result request_handler(void *cls,
                 if (sqlite3_step(stmt) == SQLITE_ROW) {
                     int user_id = sqlite3_column_int(stmt, 0);
                     log_activity(user_id, "register", "user", user_id, NULL);
-                    
+
                     // Build success response
                     JSONBuilder *jb = json_create();
                     json_start_object(jb);
@@ -438,13 +454,13 @@ static enum MHD_Result request_handler(void *cls,
         } else {
             response = json_error_response("Failed to register user");
         }
-        
+
         if (!response) {
             response = json_error_response("Registration failed");
         }
-        
+
         send_json_response(connection, response, status);
-        
+
         // Cleanup
         if (username) free(username);
         if (email) free(email);
@@ -455,14 +471,14 @@ static enum MHD_Result request_handler(void *cls,
         free(pdata->data);
         free(pdata);
         *con_cls = NULL;
-        
+
         return MHD_YES;
     }
-    
+
     // Login endpoint
     if (strcmp(url, "/api/users/login") == 0 && strcmp(method, "POST") == 0) {
         PostData *pdata = (PostData *)*con_cls;
-        
+
         // First call - initialize post data structure
         if (pdata == NULL) {
             pdata = (PostData *)malloc(sizeof(PostData));
@@ -472,7 +488,7 @@ static enum MHD_Result request_handler(void *cls,
             *con_cls = (void *)pdata;
             return MHD_YES;
         }
-        
+
         // Accumulate POST data
         if (*upload_data_size > 0) {
             size_t to_copy = (*upload_data_size < (pdata->capacity - pdata->size)) ? *upload_data_size : (pdata->capacity - pdata->size - 1);
@@ -482,14 +498,14 @@ static enum MHD_Result request_handler(void *cls,
             *upload_data_size = 0;
             return MHD_YES;
         }
-        
+
         // Process POST data
         char *username = json_get_field(pdata->data, "username");
         char *password = json_get_field(pdata->data, "password");
-        
+
         char *response = NULL;
         int status = MHD_HTTP_UNAUTHORIZED;
-        
+
         // Validate inputs
         if (!username || !password) {
             response = json_error_response("Username and password are required");
@@ -498,15 +514,15 @@ static enum MHD_Result request_handler(void *cls,
             // Verify credentials
             AuthUser user;
             memset(&user, 0, sizeof(AuthUser));
-            
+
             if (db_verify_login(db, username, password, &user)) {
                 // Generate JWT token
                 char *token = generate_jwt_token(&user);
-                
+
                 // Store session
                 if (store_session(user.user_id, token)) {
                     log_activity(user.user_id, "login", "user", user.user_id, NULL);
-                    
+
                     // Build success response
                     JSONBuilder *jb = json_create();
                     json_start_object(jb);
@@ -524,19 +540,19 @@ static enum MHD_Result request_handler(void *cls,
                 } else {
                     response = json_error_response("Failed to create session");
                 }
-                
+
                 free(token);
             } else {
                 response = json_error_response("Invalid username or password");
             }
         }
-        
+
         if (!response) {
             response = json_error_response("Login failed");
         }
-        
+
         send_json_response(connection, response, status);
-        
+
         // Cleanup
         if (username) free(username);
         if (password) free(password);
@@ -544,34 +560,34 @@ static enum MHD_Result request_handler(void *cls,
         free(pdata->data);
         free(pdata);
         *con_cls = NULL;
-        
+
         return MHD_YES;
     }
-    
+
     // Profile endpoint - GET /api/users/profile
     if (strcmp(url, "/api/users/profile") == 0 && strcmp(method, "GET") == 0) {
         const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
-        
+
         char *response = NULL;
         int status = MHD_HTTP_UNAUTHORIZED;
-        
+
         if (!auth_header) {
             response = json_error_response("Authorization header missing");
         } else {
             // Extract Bearer token (Bearer <token>)
             if (strncmp(auth_header, "Bearer ", 7) == 0) {
                 const char *token = auth_header + 7;
-                
+
                 // Find user by token in sessions table
                 sqlite3_stmt *stmt;
                 const char *query = "SELECT u.id, u.username, u.email, u.role "
                                     "FROM users u "
                                     "JOIN sessions s ON u.id = s.user_id "
                                     "WHERE s.token = ? AND s.expires_at > datetime('now')";
-                
+
                 if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
                     sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
-                    
+
                     if (sqlite3_step(stmt) == SQLITE_ROW) {
                         // Build response directly from the JOIN result
                         JSONBuilder *jb = json_create();
@@ -589,7 +605,7 @@ static enum MHD_Result request_handler(void *cls,
                         response = json_error_response("Invalid or expired token");
                         status = MHD_HTTP_UNAUTHORIZED;
                     }
-                    
+
                     sqlite3_finalize(stmt);
                 } else {
                     response = json_error_response("Database error");
@@ -600,11 +616,11 @@ static enum MHD_Result request_handler(void *cls,
                 status = MHD_HTTP_BAD_REQUEST;
             }
         }
-        
+
         if (!response) {
             response = json_error_response("Profile retrieval failed");
         }
-        
+
         send_json_response(connection, response, status);
         free(response);
         return MHD_YES;
@@ -1002,7 +1018,7 @@ static enum MHD_Result request_handler(void *cls,
                 return MHD_YES;
             }
         }
-        
+
         if (strncmp(url, "/api/paths/", 11) == 0 && strcmp(method, "GET") == 0) {
             int path_id = atoi(url + 11);
             sqlite3_stmt *stmt;
@@ -1149,42 +1165,152 @@ static enum MHD_Result request_handler(void *cls,
             return MHD_YES;
         }
 
-        // GET /api/tasks?course_id=X
+        // GET /api/tasks
         if (strcmp(url, "/api/tasks") == 0 && strcmp(method, "GET") == 0) {
+            const char *task_id_param = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "id");
             const char *course_id_param = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "course_id");
-            if (!course_id_param) {
-                char *err = json_error_response("course_id parameter required");
+
+            if (task_id_param) {
+                // Get single task details
+                int task_id = atoi(task_id_param);
+                sqlite3_stmt *stmt;
+                const char *query = "SELECT id, title, description, due_date, points, task_type FROM tasks WHERE id = ?";
+                if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                    sqlite3_bind_int(stmt, 1, task_id);
+                    if (sqlite3_step(stmt) == SQLITE_ROW) {
+                        JSONBuilder *jb = json_create();
+                        json_start_object(jb);
+                        json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                        json_add_string(jb, "title", (const char *)sqlite3_column_text(stmt, 1));
+                        json_add_string(jb, "description", (const char *)sqlite3_column_text(stmt, 2));
+                        json_add_string(jb, "due_date", (const char *)sqlite3_column_text(stmt, 3));
+                        json_add_int(jb, "points", sqlite3_column_int(stmt, 4));
+                        json_add_string(jb, "task_type", (const char *)sqlite3_column_text(stmt, 5));
+                        json_end_object(jb);
+                        char *resp = json_get_string(jb);
+                        send_json_response(connection, resp, MHD_HTTP_OK);
+                        free(resp);
+                        json_free(jb);
+                        sqlite3_finalize(stmt);
+                        return MHD_YES;
+                    }
+                    sqlite3_finalize(stmt);
+                    char *err = json_error_response("Task not found");
+                    send_json_response(connection, err, MHD_HTTP_NOT_FOUND);
+                    free(err);
+                    return MHD_YES;
+                }
+            } else if (course_id_param) {
+                // Get all tasks for a course (existing logic)
+                int course_id = atoi(course_id_param);
+                sqlite3_stmt *stmt;
+                const char *query = "SELECT id, title, description, due_date, points, task_type FROM tasks WHERE course_id = ?";
+                if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                    sqlite3_bind_int(stmt, 1, course_id);
+                    JSONBuilder *jb = json_create();
+                    json_start_object(jb);
+                    json_start_array(jb, "tasks");
+                    while (sqlite3_step(stmt) == SQLITE_ROW) {
+                        json_start_object(jb);
+                        json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                        json_add_string(jb, "title", (const char *)sqlite3_column_text(stmt, 1));
+                        json_add_string(jb, "description", (const char *)sqlite3_column_text(stmt, 2));
+                        json_add_string(jb, "due_date", (const char *)sqlite3_column_text(stmt, 3));
+                        json_add_int(jb, "points", sqlite3_column_int(stmt, 4));
+                        json_add_string(jb, "task_type", (const char *)sqlite3_column_text(stmt, 5));
+                        json_end_object(jb);
+                    }
+                    json_end_array(jb);
+                    json_end_object(jb);
+                    char *resp = json_get_string(jb);
+                    send_json_response(connection, resp, MHD_HTTP_OK);
+                    free(resp);
+                    json_free(jb);
+                    sqlite3_finalize(stmt);
+                    return MHD_YES;
+                }
+            } else {
+                char *err = json_error_response("Either id or course_id parameter required");
                 send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
                 free(err);
                 return MHD_YES;
             }
-            int course_id = atoi(course_id_param);
-            sqlite3_stmt *stmt;
-            const char *query = "SELECT id, title, description, due_date, points, task_type FROM tasks WHERE course_id = ?";
-            if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
-                sqlite3_bind_int(stmt, 1, course_id);
-                JSONBuilder *jb = json_create();
-                json_start_object(jb);
-                json_start_array(jb, "tasks");
-                while (sqlite3_step(stmt) == SQLITE_ROW) {
-                    json_start_object(jb);
-                    json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
-                    json_add_string(jb, "title", (const char *)sqlite3_column_text(stmt, 1));
-                    json_add_string(jb, "description", (const char *)sqlite3_column_text(stmt, 2));
-                    json_add_string(jb, "due_date", (const char *)sqlite3_column_text(stmt, 3));
-                    json_add_int(jb, "points", sqlite3_column_int(stmt, 4));
-                    json_add_string(jb, "task_type", (const char *)sqlite3_column_text(stmt, 5));
-                    json_end_object(jb);
-                }
-                json_end_array(jb);
-                json_end_object(jb);
-                char *resp = json_get_string(jb);
-                send_json_response(connection, resp, MHD_HTTP_OK);
-                free(resp);
-                json_free(jb);
-                sqlite3_finalize(stmt);
-                return MHD_YES;
+        }
+    }
+
+    // Teacher students endpoint
+    if (strcmp(url, "/api/teacher/students") == 0 && strcmp(method, "GET") == 0) {
+        const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
+        if (!auth_header || strncmp(auth_header, "Bearer ", 7) != 0) {
+            char *err = json_error_response("Authorization required");
+            send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+            free(err);
+            return MHD_YES;
+        }
+
+        const char *token = auth_header + 7;
+        int teacher_id = 0;
+        sqlite3_stmt *sstmt;
+        
+        // Retrieve teacher ID from token
+        if (sqlite3_prepare_v2(db, "SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')", -1, &sstmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(sstmt, 1, token, -1, SQLITE_STATIC);
+            if (sqlite3_step(sstmt) == SQLITE_ROW) {
+                teacher_id = sqlite3_column_int(sstmt, 0);
             }
+            sqlite3_finalize(sstmt);
+        }
+
+        if (teacher_id == 0) {
+            char *err = json_error_response("Invalid or expired token");
+            send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+            free(err);
+            return MHD_YES;
+        }
+
+        const char *query =
+            "SELECT u.id, u.username, u.full_name, u.email, "
+            "       c.title AS course_title, e.progress_percentage, e.status "
+            "FROM enrollments e "
+            "JOIN users u ON e.student_id = u.id "
+            "JOIN courses c ON e.course_id = c.id "
+            "WHERE c.teacher_id = ? "
+            "ORDER BY u.id";
+
+        sqlite3_stmt *stmt;
+        if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, teacher_id);
+
+            JSONBuilder *jb = json_create();
+            json_start_object(jb);
+            json_start_array(jb, "students");
+
+            while (sqlite3_step(stmt) == SQLITE_ROW) {
+                json_start_object(jb);
+                json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                json_add_string(jb, "username", (const char *)sqlite3_column_text(stmt, 1));
+                json_add_string(jb, "full_name", (const char *)sqlite3_column_text(stmt, 2));
+                json_add_string(jb, "email", (const char *)sqlite3_column_text(stmt, 3));
+                json_add_string(jb, "course_title", (const char *)sqlite3_column_text(stmt, 4));
+                json_add_double(jb, "progress_percentage", sqlite3_column_double(stmt, 5));
+                json_add_string(jb, "status", (const char *)sqlite3_column_text(stmt, 6));
+                json_end_object(jb);
+            }
+
+            json_end_array(jb);
+            json_end_object(jb);
+
+            char *resp = json_get_string(jb);
+            send_json_response(connection, resp, MHD_HTTP_OK);
+            free(resp);
+            json_free(jb);
+            sqlite3_finalize(stmt);
+            return MHD_YES;
+        } else {
+            char *err = json_error_response("Database error");
+            send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+            free(err);
+            return MHD_YES;
         }
     }
 
@@ -1197,7 +1323,7 @@ static enum MHD_Result request_handler(void *cls,
             }
         }
     }
-    
+
     // 404 Not Found
     char *not_found = json_error_response("Endpoint not found");
     send_json_response(connection, not_found, MHD_HTTP_NOT_FOUND);
@@ -1209,7 +1335,7 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
     log_message("Starting Piattaforma Corsi Online Backend...");
-    
+
     // Aprire il database
     if (!open_database("courses.db")) {
         return EXIT_FAILURE;
@@ -1219,7 +1345,7 @@ int main(int argc, char *argv[]) {
     if (!initialize_database_from_schema("schema.sql")) {
         log_message("WARNING: Database schema may not be initialized. Check schema.sql and permissions.");
     }
-    
+
     // Creare il server HTTP
     struct MHD_Daemon *daemon;
     daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY,
@@ -1227,25 +1353,25 @@ int main(int argc, char *argv[]) {
                              NULL, NULL,
                              &request_handler, NULL,
                              MHD_OPTION_END);
-    
+
     if (daemon == NULL) {
         log_message("ERROR: Cannot start HTTP server on port %d", PORT);
         close_database();
         return EXIT_FAILURE;
     }
-    
+
     log_message("HTTP Server started on http://localhost:%d", PORT);
     log_message("API Documentation: http://localhost:%d/api/docs", PORT);
-    
+
     // Mantenere il server in esecuzione
     log_message("Press Ctrl+C to stop...");
     while (1) {
         sleep(1);
     }
-    
+
     // Cleanup
     MHD_stop_daemon(daemon);
     close_database();
-    
+
     return EXIT_SUCCESS;
 }

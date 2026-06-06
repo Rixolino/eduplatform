@@ -73,8 +73,8 @@ char *generate_jwt_token(AuthUser *user) {
     // Create payload: {"user_id": X, "username": "Y", "role": "Z", "exp": T}
     char payload[512];
     snprintf(payload, sizeof(payload),
-             "{\"user_id\":%d,\"username\":\"%s\",\"role\":\"%s\",\"exp\":%ld}",
-             user->user_id, user->username, user->role, expires);
+             "{\"user_id\":%d,\"username\":\"%s\",\"role\":\"%s\",\"exp\":%lld}",
+             user->user_id, user->username, user->role, (long long)expires);
     
     // In a real implementation, this should be properly signed
     // For now, just encode the payload in base64

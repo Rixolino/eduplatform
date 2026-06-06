@@ -1,3 +1,0 @@
-/home/runner/workspace/build/CMakeFiles/course_server.dir
-/home/runner/workspace/build/CMakeFiles/edit_cache.dir
-/home/runner/workspace/build/CMakeFiles/rebuild_cache.dir

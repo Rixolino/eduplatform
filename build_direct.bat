@@ -30,50 +30,54 @@ if exist "%VCVARS%" (
 
 echo.
 echo Verificando SQLite3...
-
 if not exist "sqlite3.c" (
-    echo.
-    echo Scaricando SQLite3 amalgamation...
-    powershell -ExecutionPolicy Bypass -File "download_sqlite.ps1" -OutputDir "."
-    if errorlevel 1 (
-        echo.
-        echo ERRORE: Impossibile scaricare SQLite3
-        echo.
-        echo SOLUZIONE MANUALE:
-        echo   1. Vai a: https://www.sqlite.org/download.html
-        echo   2. Scarica: sqlite-amalgamation-3460000.zip
-        echo   3. Estrai sqlite3.c e sqlite3.h in questa directory
-        echo   4. Riesegui questo script
-        echo.
-        exit /b 1
-    )
-)
-
-if not exist "sqlite3.h" (
-    echo Errore: sqlite3.h non trovato dopo download
+    echo ERRORE: sqlite3.c non trovato.
     exit /b 1
 )
-
+if not exist "sqlite3.h" (
+    echo ERRORE: sqlite3.h non trovato.
+    exit /b 1
+)
 echo SQLite3 OK
 
 echo.
-echo Compilazione di server_simple.c (con Winsock, nessuna dipendenza esterna)...
+echo Verificando libmicrohttpd...
+if not exist "libmicrohttpd-dll.lib" (
+    echo ERRORE: libmicrohttpd-dll.lib non trovato nella directory corrente.
+    exit /b 1
+)
+if not exist "libmicrohttpd-dll.dll" (
+    echo ERRORE: libmicrohttpd-dll.dll non trovato nella directory corrente.
+    exit /b 1
+)
+echo libmicrohttpd OK
+
+:: Creo la cartella bin se non esiste
+if not exist "bin" mkdir bin
+
+echo.
+echo Copiando la DLL in bin\...
+copy /Y "libmicrohttpd-dll.dll" "bin\libmicrohttpd-dll.dll" > nul
+
+echo.
+echo Compilazione in corso (server.c + sqlite3.c + libmicrohttpd)...
 echo.
 
+:: Nota: ho aggiornato il nome della libreria da linkare in libmicrohttpd-dll.lib
 cl.exe /O2 /I. /D_CRT_SECURE_NO_WARNINGS ^
     /Fo"bin\\" ^
     /Fe"bin\course_server.exe" ^
-    server_simple.c sqlite3.c ^
-    /link ws2_32.lib
+    server.c sqlite3.c ^
+    /link ws2_32.lib libmicrohttpd-dll.lib
 
 if %ERRORLEVEL% equ 0 (
     echo.
     echo ===================================
-    echo BUILD COMPLETATO!
+    echo BUILD COMPLETATO CON SUCCESSO!
     echo ===================================
     echo Eseguibile: bin\course_server.exe
     echo.
-    echo Per avviare il server:
+    echo Per avviare il server digita:
     echo   .\bin\course_server.exe
     echo.
     exit /b 0
