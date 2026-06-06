@@ -309,7 +309,11 @@ class CourseApp {
 
   async loadStudentDashboard() {
     try {
-      const enrollments = await api.getEnrollments();
+      const response = await api.getEnrollments();
+      const enrollments = Array.isArray(response)
+        ? response
+        : response.enrollments || [];
+
       document.getElementById("userGreeting").textContent =
         this.currentUser.full_name;
       document.getElementById("statEnrolled").textContent = enrollments.length;
@@ -416,7 +420,10 @@ class CourseApp {
 
   async loadMyCourses() {
     try {
-      const enrollments = await api.getEnrollments();
+      const response = await api.getEnrollments();
+      const enrollments = Array.isArray(response)
+        ? response
+        : response.enrollments || [];
       const coursesList = document.getElementById("enrolledCoursesList");
       coursesList.innerHTML = "";
 
@@ -432,7 +439,10 @@ class CourseApp {
 
   async loadProgressTracker() {
     try {
-      const enrollments = await api.getEnrollments();
+      const response = await api.getEnrollments();
+      const enrollments = Array.isArray(response)
+        ? response
+        : response.enrollments || [];
       const container = document.getElementById("progressStats");
       container.innerHTML = "";
 

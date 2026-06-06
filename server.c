@@ -207,25 +207,38 @@ char *json_get_field(const char *json, const char *field) {
     while (*pos && isspace(*pos)) pos++;
 
     // Check if value is a string (starts with ")
-    if (*pos != '"') return NULL;
+    if (*pos == '"') {
+        pos++; // Skip opening quote
 
-    pos++; // Skip opening quote
+        // Find closing quote (handle escaping)
+        char *result = (char *)malloc(512);
+        int idx = 0;
 
-    // Find closing quote (handle escaping)
-    char *result = (char *)malloc(512);
-    int idx = 0;
-
-    while (*pos && idx < 511) {
-        if (*pos == '"' && (idx == 0 || result[idx-1] != '\\')) {
-            // Found closing quote
-            result[idx] = '\0';
-            return result;
+        while (*pos && idx < 511) {
+            if (*pos == '"' && (idx == 0 || result[idx-1] != '\\')) {
+                // Found closing quote
+                result[idx] = '\0';
+                return result;
+            }
+            result[idx++] = *pos;
+            pos++;
         }
-        result[idx++] = *pos;
-        pos++;
+        free(result);
+        return NULL;
+    } 
+    // Handle numbers or booleans
+    else if (isdigit(*pos) || *pos == '-' || *pos == 't' || *pos == 'f' || *pos == 'n') {
+        char *result = (char *)malloc(512);
+        int idx = 0;
+        
+        while (*pos && idx < 511 && *pos != ',' && *pos != '}' && !isspace(*pos)) {
+            result[idx++] = *pos;
+            pos++;
+        }
+        result[idx] = '\0';
+        return result;
     }
 
-    free(result);
     return NULL;
 }
 
@@ -472,6 +485,37 @@ static enum MHD_Result request_handler(void *cls,
         free(pdata);
         *con_cls = NULL;
 
+        return MHD_YES;
+    }
+
+    // Check user/email existence endpoint
+    if (strcmp(url, "/api/users/check") == 0 && strcmp(method, "GET") == 0) {
+        const char *username = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "username");
+        const char *email = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "email");
+        
+        int exists = 0;
+        char message[100] = {0};
+        
+        if (username && username_exists(username)) {
+            exists = 1;
+            strcpy(message, "Username already exists");
+        } else if (email && email_exists(email)) {
+            exists = 1;
+            strcpy(message, "Email already exists");
+        } else {
+            strcpy(message, "Available");
+        }
+
+        JSONBuilder *jb = json_create();
+        json_start_object(jb);
+        json_add_int(jb, "exists", exists);
+        json_add_string(jb, "message", message);
+        json_end_object(jb);
+        
+        char *resp = json_get_string(jb);
+        send_json_response(connection, resp, MHD_HTTP_OK);
+        free(resp);
+        json_free(jb);
         return MHD_YES;
     }
 
@@ -982,6 +1026,175 @@ static enum MHD_Result request_handler(void *cls,
                 }
                 return MHD_YES;
             }
+        }
+    }
+
+    // Enrollments endpoints
+    if (strncmp(url, "/api/enrollments", 16) == 0) {
+        const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
+        if (!auth_header || strncmp(auth_header, "Bearer ", 7) != 0) {
+            char *err = json_error_response("Authorization required");
+            send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+            free(err);
+            return MHD_YES;
+        }
+
+        const char *token = auth_header + 7;
+        int user_id = 0;
+        char user_role[20] = {0};
+        sqlite3_stmt *sstmt;
+
+        // Verify token
+        if (sqlite3_prepare_v2(db, "SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')", -1, &sstmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(sstmt, 1, token, -1, SQLITE_STATIC);
+            if (sqlite3_step(sstmt) == SQLITE_ROW) {
+                user_id = sqlite3_column_int(sstmt, 0);
+            }
+            sqlite3_finalize(sstmt);
+        }
+
+        if (user_id == 0) {
+            char *err = json_error_response("Invalid or expired token");
+            send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+            free(err);
+            return MHD_YES;
+        }
+
+        // Get user role
+        if (sqlite3_prepare_v2(db, "SELECT role FROM users WHERE id = ?", -1, &sstmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int(sstmt, 1, user_id);
+            if (sqlite3_step(sstmt) == SQLITE_ROW) {
+                strcpy(user_role, (const char *)sqlite3_column_text(sstmt, 0));
+            }
+            sqlite3_finalize(sstmt);
+        }
+
+        // GET /api/enrollments (List user enrollments)
+        if (strcmp(url, "/api/enrollments") == 0 && strcmp(method, "GET") == 0) {
+            sqlite3_stmt *stmt;
+            const char *query = "SELECT e.id, e.course_id, e.status, e.progress_percentage, c.title as course_title "
+                                "FROM enrollments e "
+                                "JOIN courses c ON e.course_id = c.id "
+                                "WHERE e.student_id = ?";
+            if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, user_id);
+
+                JSONBuilder *jb = json_create();
+                json_start_object(jb);
+                json_start_array(jb, "enrollments");
+
+                while (sqlite3_step(stmt) == SQLITE_ROW) {
+                    json_start_object(jb);
+                    json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                    json_add_int(jb, "course_id", sqlite3_column_int(stmt, 1));
+                    json_add_string(jb, "status", (const char *)sqlite3_column_text(stmt, 2));
+                    json_add_double(jb, "progress_percentage", sqlite3_column_double(stmt, 3));
+                    json_add_string(jb, "course_title", (const char *)sqlite3_column_text(stmt, 4));
+                    json_end_object(jb);
+                    json_append(jb, ",");
+                }
+
+                json_end_array(jb);
+                json_end_object(jb);
+
+                char *resp = json_get_string(jb);
+                send_json_response(connection, resp, MHD_HTTP_OK);
+                free(resp);
+                json_free(jb);
+                sqlite3_finalize(stmt);
+                return MHD_YES;
+            } else {
+                char *err = json_error_response("Database error fetching enrollments");
+                send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+                free(err);
+                return MHD_YES;
+            }
+        }
+
+        // POST /api/enrollments (Enroll in a course)
+        if (strcmp(url, "/api/enrollments") == 0 && strcmp(method, "POST") == 0) {
+            PostData *pdata = (PostData *)*con_cls;
+            
+            if (pdata == NULL) {
+                pdata = (PostData *)malloc(sizeof(PostData));
+                pdata->data = (char *)malloc(MAX_POST_SIZE);
+                pdata->size = 0;
+                pdata->capacity = MAX_POST_SIZE;
+                *con_cls = (void *)pdata;
+                return MHD_YES;
+            }
+
+            if (*upload_data_size != 0) {
+                if (pdata->size + *upload_data_size < pdata->capacity) {
+                    memcpy(pdata->data + pdata->size, upload_data, *upload_data_size);
+                    pdata->size += *upload_data_size;
+                    *upload_data_size = 0;
+                    return MHD_YES;
+                }
+                return MHD_NO;
+            }
+
+            pdata->data[pdata->size] = '\0';
+            
+            // Extract course_id
+            char *course_id_s = json_get_field(pdata->data, "course_id");
+            if (!course_id_s) {
+                char *err = json_error_response("Missing required field: course_id");
+                send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
+                free(err);
+                free(pdata->data);
+                free(pdata);
+                *con_cls = NULL;
+                return MHD_YES;
+            }
+
+            int course_id = atoi(course_id_s);
+            free(course_id_s);
+
+            // Check if already enrolled
+            int already_enrolled = 0;
+            sqlite3_stmt *chk_stmt;
+            if (sqlite3_prepare_v2(db, "SELECT id FROM enrollments WHERE student_id = ? AND course_id = ?", -1, &chk_stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(chk_stmt, 1, user_id);
+                sqlite3_bind_int(chk_stmt, 2, course_id);
+                if (sqlite3_step(chk_stmt) == SQLITE_ROW) {
+                    already_enrolled = 1;
+                }
+                sqlite3_finalize(chk_stmt);
+            }
+
+            if (already_enrolled) {
+                char *err = json_error_response("Already enrolled in this course");
+                send_json_response(connection, err, MHD_HTTP_CONFLICT);
+                free(pdata->data);
+                free(pdata);
+                *con_cls = NULL;
+                return MHD_YES;
+            }
+
+            // Perform enrollment
+            sqlite3_stmt *stmt;
+            const char *query = "INSERT INTO enrollments (student_id, course_id, status, progress_percentage) VALUES (?, ?, 'enrolled', 0.0)";
+            if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, user_id);
+                sqlite3_bind_int(stmt, 2, course_id);
+
+                if (sqlite3_step(stmt) == SQLITE_DONE) {
+                    char *ok = json_success_response("Successfully enrolled");
+                    send_json_response(connection, ok, MHD_HTTP_CREATED);
+                    free(ok);
+                } else {
+                    char *err = json_error_response("Failed to enroll");
+                    send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+                    free(err);
+                }
+                sqlite3_finalize(stmt);
+            }
+
+            free(pdata->data);
+            free(pdata);
+            *con_cls = NULL;
+            return MHD_YES;
         }
     }
 

@@ -47,7 +47,10 @@ class APIClient {
           const jsonErrorBody = await response.json();
           error = {
             ...jsonErrorBody,
-            message: `${jsonErrorBody.message || "API Error"} (${response.status})`,
+            message:
+              jsonErrorBody.error ||
+              jsonErrorBody.message ||
+              `API Error (${response.status})`,
           };
         } catch (e) {
           // 2. If JSON parsing fails, read the text body as a fallback
