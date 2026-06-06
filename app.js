@@ -182,15 +182,89 @@ class CourseApp {
     const navbar = document.getElementById("navbarMenu");
     if (navbar) {
       navbar.innerHTML = `
+                <li>
+                    <div class="notification-container" id="notifBell">
+                        <i class="fas fa-bell"></i>
+                        <span class="badge" id="notifBadge" style="display: none;">0</span>
+                        <div class="notification-dropdown hidden" id="notifDropdown">
+                            <div class="notif-header">Notifiche</div>
+                            <div class="notif-body" id="notifList"></div>
+                        </div>
+                    </div>
+                </li>
                 <li><span>Benvenuto, ${this.currentUser.username}</span></li>
                 <li><a href="#" id="btnLogout" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
             `;
       document
         .getElementById("btnLogout")
         .addEventListener("click", () => this.handleLogout());
+
+      document.getElementById("notifBell").addEventListener("click", (e) => {
+          if (e.target.closest('.notification-dropdown')) return; // non chiudere se clicco dentro
+          document.getElementById("notifDropdown").classList.toggle("hidden");
+      });
+
+      this.fetchNotifications();
+      // Polling notifications every 30s
+      setInterval(() => this.fetchNotifications(), 30000);
     }
 
     this.handleRoute();
+  }
+
+  async fetchNotifications() {
+      try {
+          const res = await fetch("/api/notifications", {
+              headers: { Authorization: "Bearer " + api.getToken() }
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          const notifs = data.notifications || [];
+          const unread = data.unread_count || 0;
+
+          const badge = document.getElementById("notifBadge");
+          if (unread > 0) {
+              badge.textContent = unread;
+              badge.style.display = "flex";
+          } else {
+              badge.style.display = "none";
+          }
+
+          const notifList = document.getElementById("notifList");
+          if (notifs.length === 0) {
+              notifList.innerHTML = "<div class='notif-item'>Nessuna notifica</div>";
+              return;
+          }
+
+          notifList.innerHTML = notifs.map(n => `
+              <div class="notif-item ${n.is_read ? 'read' : 'unread'}" onclick="app.readNotification(${n.id}, this, '${n.type}', ${n.reference_id})">
+                  ${n.message}
+              </div>
+          `).join('');
+      } catch (e) {
+          console.error("Error fetching notifications", e);
+      }
+  }
+
+  async readNotification(id, el, type, reference_id) {
+      try {
+          await fetch("/api/notifications/" + id + "/read", {
+              method: "PUT",
+              headers: { Authorization: "Bearer " + api.getToken() }
+          });
+          el.classList.remove('unread');
+          el.classList.add('read');
+          this.fetchNotifications();
+          document.getElementById("notifDropdown").classList.add("hidden");
+
+          if (type === 'task_assigned' && reference_id) {
+              // Studente: apre il task
+              this.viewTask(reference_id);
+          } else if (type === 'submission_received' && reference_id) {
+              // Docente: apre direttamente la consegna
+              this.viewSubmission(reference_id);
+          }
+      } catch(e) {}
   }
 
   handleRoute() {
@@ -290,6 +364,7 @@ class CourseApp {
       ],
       "create-course": ["createCourseFormContainer", () => {}],
       students: ["teacherStudentList", this.loadStudentsList.bind(this)],
+      "task-details": ["taskDetailsSection", () => {}],
     };
 
     if (sections[section]) {
@@ -358,7 +433,11 @@ class CourseApp {
         mermaid.init(undefined, container.querySelectorAll(".mermaid"));
       }
     } catch (e) {
-      console.error("Error rendering skill graph", e);
+      // Ignore 404/Endpoint not found silently since the backend doesn't implement this yet
+      const container = document.getElementById("skillGraphCanvas");
+      if (container) {
+          container.innerHTML = "<p>Nessuna competenza acquisita ancora.</p>";
+      }
     }
   }
 
@@ -411,7 +490,17 @@ class CourseApp {
   async loadCoursesCatalog() {
     try {
       const response = await api.getCourses();
-      const coursesArray = response.courses || []; // Estrai l'array
+      let coursesArray = response.courses || []; // Estrai l'array
+
+      try {
+          const enrollmentsRes = await api.getEnrollments();
+          const enrollments = Array.isArray(enrollmentsRes) ? enrollmentsRes : enrollmentsRes.enrollments || [];
+          const enrolledIds = enrollments.map(e => e.course_id);
+          coursesArray = coursesArray.filter(c => !enrolledIds.includes(c.id));
+      } catch (e) {
+          console.warn("Could not fetch enrollments for filtering", e);
+      }
+
       this.renderCoursesList(coursesArray, "coursesList", true);
     } catch (error) {
       console.error("Error loading courses:", error);
@@ -598,7 +687,17 @@ class CourseApp {
 
     try {
       const response = await api.getCourses({ search, category, difficulty });
-      const coursesArray = response.courses || []; // Estrai l'array
+      let coursesArray = response.courses || []; // Estrai l'array
+
+      try {
+          const enrollmentsRes = await api.getEnrollments();
+          const enrollments = Array.isArray(enrollmentsRes) ? enrollmentsRes : enrollmentsRes.enrollments || [];
+          const enrolledIds = enrollments.map(e => e.course_id);
+          coursesArray = coursesArray.filter(c => !enrolledIds.includes(c.id));
+      } catch (e) {
+          console.warn("Could not fetch enrollments for filtering", e);
+      }
+
       this.renderCoursesList(coursesArray, "coursesList", true);
     } catch (error) {
       console.error("Error searching courses:", error);
@@ -971,76 +1070,199 @@ class CourseApp {
   }
 
   async viewTask(taskId) {
-    try {
-      const task = await api.getTaskDetails(taskId);
-      this.renderTaskDetails(task);
-      this.showPage("task-details");
-    } catch (error) {
-      this.showAlert(
-        "Errore nel caricamento del task: " + error.message,
-        "error",
-      );
-    }
-  }
+      try {
+          const task = await api.getTaskDetails(taskId);
+          const isTeacher = this.currentUser && this.currentUser.role === "teacher";
 
-  renderTaskDetails(task) {
-    const container = document.getElementById("task-detail-view");
-    if (!container) return;
+          if (isTeacher) {
+              document.getElementById('taskSectionTitleTeacher').textContent = task.title;
+              document.getElementById('taskSectionDescTeacher').textContent = task.description || "Nessuna descrizione.";
+              document.getElementById('taskSectionDueTeacher').innerHTML = "<i class='fas fa-calendar'></i> Scadenza: " + (task.due_date ? new Date(task.due_date).toLocaleDateString('it-IT') : "N/D");
+              document.getElementById('taskSectionPointsTeacher').innerHTML = "<i class='fas fa-star'></i> Punti: " + (task.points || 0);
+              const backBtn = document.getElementById('btnBackFromTaskTeacher');
+              if (backBtn) backBtn.onclick = () => this.showDashboardPage(this.previousDashboardSection || 'teacher-dashboard');
 
-    container.innerHTML = `
-        <div class="task-detail-container">
-            <button onclick="app.showDashboardPage()" class="btn-back">← Torna</button>
-            <h2>${task.title}</h2>
-            <div class="task-meta">
-                <span><strong>Scadenza:</strong> ${task.due_date || "Non specificata"}</span>
-                <span><strong>Punti:</strong> ${task.points}</span>
-            </div>
-            <div class="task-description">${task.description}</div>
+              // Carica la lista delle consegne
+              const listContainer = document.getElementById('taskSubmissionsList');
+              listContainer.innerHTML = '<p style="color: var(--text-light); font-style: italic;">Caricamento...</p>';
+              try {
+                  const subRes = await fetch(`/api/tasks/${taskId}/submissions`, {
+                      headers: { Authorization: "Bearer " + api.getToken() }
+                  });
+                  const subData = await subRes.json();
+                  const submissions = subData.submissions || [];
+                  if (submissions.length === 0) {
+                      listContainer.innerHTML = '<p style="color: var(--text-light); font-style: italic;">Nessuna consegna ricevuta ancora.</p>';
+                  } else {
+                      listContainer.innerHTML = submissions.map(s => `
+                          <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.2s;" 
+                               onmouseenter="this.style.background='#f5f5f5'" onmouseleave="this.style.background='white'"
+                               onclick="app.viewSubmission(${s.id})">
+                              <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                  <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--primary-color); display: flex; align-items: center; justify-content: center; color: white;">
+                                      <i class="fas fa-user"></i>
+                                  </div>
+                                  <div>
+                                      <p style="font-weight: 600; margin: 0;">${s.student_name || s.username}</p>
+                                      <p style="font-size: 0.8rem; color: var(--text-light); margin: 0;">Consegnato: ${s.submission_date ? new Date(s.submission_date).toLocaleString('it-IT') : 'N/D'}</p>
+                                  </div>
+                              </div>
+                              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                  <span style="background: #e8f5e9; color: #2e7d32; padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">
+                                      <i class="fas fa-check"></i> ${s.status}
+                                  </span>
+                                  <i class="fas fa-chevron-right" style="color: var(--text-light);"></i>
+                              </div>
+                          </div>`).join('');
+                  }
+              } catch(e) {
+                  listContainer.innerHTML = '<p style="color: red;">Errore nel caricamento delle consegne.</p>';
+              }
 
-            <div class="submission-area">
-                <h3>Consegna Task</h3>
-                <form id="submission-form">
-                    <textarea id="submission-text" placeholder="Descrivi la tua soluzione..."></textarea>
-                    <div class="file-upload">
-                        <input type="file" id="submission-file" multiple>
-                        <div id="file-list"></div>
-                    </div>
-                    <button type="submit" class="btn btn-primary">Invia Consegna</button>
-                </form>
-            </div>
-        </div>
-    `;
+              document.querySelectorAll('#teacherDashboard .dashboard-section').forEach(s => s.classList.add('hidden'));
+              document.getElementById('taskDetailsSectionTeacher').classList.remove('hidden');
+              return;
+          }
 
-    const form = document.getElementById("submission-form");
-    if (form) {
-      form.onsubmit = (e) => this.handleTaskSubmission(e, task.id);
-    }
-  }
+          // --- Lato studente ---
+          document.getElementById('taskSectionTitle').textContent = task.title;
+          document.getElementById('taskSectionDesc').textContent = task.description || "Nessuna descrizione.";
+          const dueDate = task.due_date ? new Date(task.due_date) : null;
+          document.getElementById('taskSectionDue').innerHTML = "<i class='fas fa-calendar'></i> Scadenza: " + (dueDate ? dueDate.toLocaleDateString('it-IT') : "N/D");
+          document.getElementById('taskSectionPoints').innerHTML = "<i class='fas fa-star'></i> Punti: " + (task.points || 0);
 
-  async handleTaskSubmission(e, taskId) {
-    e.preventDefault();
-    const text = document.getElementById("submission-text").value;
-    const fileInput = document.getElementById("submission-file");
-    const files = fileInput.files;
-    const uploadedFiles = [];
+          const backBtn = document.getElementById('btnBackFromTask');
+          if (backBtn) backBtn.onclick = () => this.showDashboardPage(this.previousDashboardSection || 'dashboard');
 
-    try {
-      for (let file of files) {
-        const uploadRes = await api.uploadFile(file);
-        uploadedFiles.push(uploadRes.file_id);
+          // Controlla se già consegnato
+          const subArea = document.getElementById('taskSectionSubmissionArea');
+          try {
+              const subRes = await fetch(`/api/tasks/${taskId}/submission`, {
+                  headers: { Authorization: "Bearer " + api.getToken() }
+              });
+              const subData = await subRes.json();
+
+              const isPastDue = dueDate && new Date() > dueDate;
+
+              if (subData.submitted === "true") {
+                  // Già consegnato
+                  const subDateStr = subData.submission_date ? new Date(subData.submission_date).toLocaleString('it-IT') : "";
+                  if (!isPastDue) {
+                      // Entro la scadenza → può ritirare
+                      subArea.innerHTML = `
+                          <div style="background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;">
+                              <p style="color: #2e7d32; font-weight: 600; margin-bottom: 0.25rem;"><i class="fas fa-check-circle"></i> Task consegnato</p>
+                              <p style="color: #555; font-size: 0.9rem;">Consegnato il: ${subDateStr}</p>
+                              <p style="color: #555; font-size: 0.9rem; margin-top: 0.5rem;"><strong>La tua risposta:</strong> ${subData.content || "(vuoto)"}</p>
+                          </div>
+                          <div style="display: flex; justify-content: flex-end;">
+                              <button class="btn" id="btnWithdrawTask" style="background: #e53935; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer;">
+                                  <i class="fas fa-undo"></i> Ritira consegna
+                              </button>
+                          </div>`;
+                      document.getElementById('btnWithdrawTask').onclick = () => this.withdrawTask(taskId);
+                  } else {
+                      // Scaduto → solo visualizzazione
+                      subArea.innerHTML = `
+                          <div style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 1.25rem;">
+                              <p style="color: #1565c0; font-weight: 600;"><i class="fas fa-lock"></i> Task consegnato (scadenza passata)</p>
+                              <p style="color: #555; font-size: 0.9rem;">Consegnato il: ${subDateStr}</p>
+                              <p style="color: #555; font-size: 0.9rem; margin-top: 0.5rem;"><strong>La tua risposta:</strong> ${subData.content || "(vuoto)"}</p>
+                          </div>`;
+                  }
+              } else {
+                  // Non ancora consegnato
+                  if (isPastDue) {
+                      subArea.innerHTML = `<div style="background: #fff3e0; border: 1px solid #ffcc80; border-radius: 8px; padding: 1rem; color: #e65100;">
+                          <i class="fas fa-exclamation-triangle"></i> La scadenza è passata, non puoi più consegnare questo task.
+                      </div>`;
+                  } else {
+                      subArea.innerHTML = `
+                          <h3 style="margin-bottom: 0.75rem;">Invia la tua consegna</h3>
+                          <textarea id="taskSectionSubmissionContent" rows="5" style="width:100%;padding:0.75rem;margin-bottom:1rem;border:1px solid var(--border-color);border-radius:5px;font-size:1rem;" placeholder="Scrivi qui la tua risposta..."></textarea>
+                          <div style="display:flex;gap:1rem;justify-content:flex-end;">
+                              <button class="btn btn-primary" id="btnSubmitTaskSection">Consegna Task</button>
+                          </div>`;
+                      document.getElementById('btnSubmitTaskSection').onclick = () => this.submitTask(taskId);
+                  }
+              }
+          } catch(e) {
+              subArea.innerHTML = `<p style="color:red">Errore nel caricamento dello stato consegna.</p>`;
+          }
+
+          document.querySelectorAll('#studentDashboard .dashboard-section').forEach(s => s.classList.add('hidden'));
+          document.getElementById('taskDetailsSection').classList.remove('hidden');
+      } catch (error) {
+          this.showAlert("Errore durante l'apertura del task: " + error.message, "error");
       }
+  }
 
-      await api.submitSubmission({
-        task_id: taskId,
-        content: text,
-        attachments: uploadedFiles,
-      });
+  async withdrawTask(taskId) {
+      if (!confirm("Sei sicuro di voler ritirare la consegna?")) return;
+      try {
+          const res = await fetch(`/api/tasks/${taskId}/submission`, {
+              method: "DELETE",
+              headers: { Authorization: "Bearer " + api.getToken() }
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Errore nel ritiro");
+          this.showAlert("Consegna ritirata con successo!", "success");
+          this.viewTask(taskId); // Ricarica la vista
+      } catch(e) {
+          this.showAlert(e.message, "error");
+      }
+  }
 
-      this.showAlert("Consegna inviata con successo!", "success");
-      this.viewTask(taskId); // Refresh
-    } catch (error) {
-      this.showAlert("Errore durante l'invio: " + error.message, "error");
-    }
+  async viewSubmission(submissionId) {
+      try {
+          const res = await fetch(`/api/submissions/${submissionId}`, {
+              headers: { Authorization: "Bearer " + api.getToken() }
+          });
+          if (!res.ok) throw new Error("Consegna non trovata");
+          const sub = await res.json();
+
+          document.getElementById('subDetailStudentName').textContent = sub.student_name || sub.username;
+          document.getElementById('subDetailUsername').textContent = "@" + (sub.username || "");
+          document.getElementById('subDetailTask').innerHTML = `<i class="fas fa-tasks"></i> Task: <strong>${sub.task_title || ""}</strong>`;
+          document.getElementById('subDetailDate').innerHTML = `<i class="fas fa-clock"></i> Consegnato: <strong>${sub.submission_date ? new Date(sub.submission_date).toLocaleString('it-IT') : "N/D"}</strong>`;
+          
+          const statusMap = { submitted: "Consegnato", graded: "Valutato", returned: "Restituito" };
+          document.getElementById('subDetailStatus').innerHTML = `<i class="fas fa-info-circle"></i> Stato: <strong>${statusMap[sub.status] || sub.status}</strong>`;
+          document.getElementById('subDetailContent').textContent = sub.content || "(Nessuna risposta)";
+
+          // Back button: torna al task del docente
+          const backBtn = document.getElementById('btnBackFromSubmission');
+          if (backBtn) backBtn.onclick = () => this.viewTask(sub.task_id);
+
+          // Mostra la sezione
+          document.querySelectorAll('#teacherDashboard .dashboard-section').forEach(s => s.classList.add('hidden'));
+          document.getElementById('submissionDetailSection').classList.remove('hidden');
+      } catch(e) {
+          this.showAlert("Errore nell'apertura della consegna: " + e.message, "error");
+      }
+  }
+
+  async submitTask(taskId) {
+      const content = document.getElementById('taskSectionSubmissionContent').value;
+      if (!content.trim()) {
+          this.showAlert("Inserisci una risposta prima di consegnare.", "error");
+          return;
+      }
+      try {
+          const res = await fetch("/api/tasks/" + taskId + "/submit", {
+              method: "POST",
+              headers: { 
+                  "Content-Type": "application/json",
+                  "Authorization": "Bearer " + api.getToken() 
+              },
+              body: JSON.stringify({ content })
+          });
+          if (!res.ok) throw new Error("Errore durante la consegna");
+          this.showAlert("Task consegnato con successo!", "success");
+          this.showDashboardPage(this.previousDashboardSection || "dashboard");
+      } catch (e) {
+          this.showAlert(e.message, "error");
+      }
   }
 
   openMediaViewer(url, type) {
