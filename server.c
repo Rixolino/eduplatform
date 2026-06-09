@@ -370,10 +370,119 @@ static enum MHD_Result request_handler(void *cls,
         }
     }
 
-    // Root API status endpoint (only reached if static file not found)
-    if (strcmp(url, "/") == 0) {
-        const char *response = "{\"status\": \"ok\", \"message\": \"Piattaforma Corsi Online API v1.0\"}";
-        send_json_response(connection, response, MHD_HTTP_OK);
+    // PUT /api/submissions/{id}/grade - Docente assegna voto e feedback
+    if (strncmp(url, "/api/submissions/", 17) == 0 && strstr(url, "/grade") != NULL && strcmp(method, "PUT") == 0) {
+        int sub_id = atoi(url + 17);
+        
+        // Gestione accumulo dati POST/PUT
+        PostData *pdata = (PostData *)*con_cls;
+        if (pdata == NULL) {
+            pdata = (PostData *)malloc(sizeof(PostData));
+            pdata->data = (char *)malloc(MAX_POST_SIZE);
+            pdata->size = 0;
+            pdata->capacity = MAX_POST_SIZE;
+            *con_cls = (void *)pdata;
+            return MHD_YES;
+        }
+        if (*upload_data_size > 0) {
+            size_t to_copy = (*upload_data_size < (pdata->capacity - pdata->size)) 
+                ? *upload_data_size 
+                : (pdata->capacity - pdata->size - 1);
+            memcpy(pdata->data + pdata->size, upload_data, to_copy);
+            pdata->size += to_copy;
+            pdata->data[pdata->size] = '\0';
+            *upload_data_size = 0;
+            return MHD_YES;
+        }
+
+        // Ora che abbiamo i dati, procediamo con l'autenticazione
+        const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
+        if (!auth_header || strncmp(auth_header, "Bearer ", 7) != 0) {
+            char *err = json_error_response("Authorization required");
+            send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+            free(err); 
+            free(pdata->data); free(pdata); *con_cls = NULL;
+            return MHD_YES;
+        }
+        int teacher_id = 0;
+        sqlite3_stmt *sstmt;
+        if (sqlite3_prepare_v2(db, "SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')", -1, &sstmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(sstmt, 1, auth_header + 7, -1, SQLITE_STATIC);
+            if (sqlite3_step(sstmt) == SQLITE_ROW) teacher_id = sqlite3_column_int(sstmt, 0);
+            sqlite3_finalize(sstmt);
+        }
+        if (teacher_id == 0) {
+            char *err = json_error_response("Invalid session");
+            send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+            free(err); 
+            free(pdata->data); free(pdata); *con_cls = NULL;
+            return MHD_YES;
+        }
+
+        const char *grade_s = json_get_field(pdata->data, "grade");
+        const char *feedback = json_get_field(pdata->data, "feedback");
+        if (!grade_s) {
+            char *err = json_error_response("Grade is required");
+            send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
+            free(err); 
+            free(pdata->data); free(pdata); *con_cls = NULL;
+            return MHD_YES;
+        }
+        double grade = atof(grade_s);
+
+        sqlite3_stmt *vstmt;
+        int is_teacher = 0;
+        int max_points = 0;
+        if (sqlite3_prepare_v2(db, "SELECT tasks.teacher_id, tasks.points FROM task_submissions ts JOIN tasks ON ts.task_id = tasks.id WHERE ts.id = ?", -1, &vstmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int(vstmt, 1, sub_id);
+            if (sqlite3_step(vstmt) == SQLITE_ROW) {
+                if (sqlite3_column_int(vstmt, 0) == teacher_id) {
+                    is_teacher = 1;
+                    max_points = sqlite3_column_int(vstmt, 1);
+                }
+            }
+            sqlite3_finalize(vstmt);
+        }
+        if (!is_teacher) {
+            char *err = json_error_response("You are not the teacher for this task");
+            send_json_response(connection, err, MHD_HTTP_FORBIDDEN);
+            free(err); 
+            free(pdata->data); free(pdata); *con_cls = NULL;
+            return MHD_YES;
+        }
+
+        if (grade < 0 || (max_points > 0 && grade > max_points)) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "Il voto deve essere compreso tra 0 e %d", max_points);
+            char *err = json_error_response(msg);
+            send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
+            free(err); 
+            free(pdata->data); free(pdata); *con_cls = NULL;
+            return MHD_YES;
+        }
+
+        sqlite3_stmt *stmt;
+        const char *q = "UPDATE task_submissions SET grade = ?, teacher_feedback = ?, status = 'graded' WHERE id = ?";
+        if (sqlite3_prepare_v2(db, q, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_double(stmt, 1, grade);
+            sqlite3_bind_text(stmt, 2, feedback ? feedback : "", -1, SQLITE_STATIC);
+            sqlite3_bind_int(stmt, 3, sub_id);
+            if (sqlite3_step(stmt) == SQLITE_DONE) {
+                char *ok = json_success_response("Grade assigned successfully");
+                send_json_response(connection, ok, MHD_HTTP_OK);
+                free(ok);
+            } else {
+                char *err = json_error_response("Failed to update grade");
+                send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+                free(err);
+            }
+            sqlite3_finalize(stmt);
+        } else {
+            char *err = json_error_response("Database error");
+            send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+            free(err);
+        }
+        free(pdata->data); free(pdata); *con_cls = NULL;
         return MHD_YES;
     }
 
@@ -1353,11 +1462,21 @@ static enum MHD_Result request_handler(void *cls,
                         int task_id = (int)sqlite3_last_insert_rowid(db);
                         
                         // Notify students
+                        char course_title[128] = "Corso";
+                        sqlite3_stmt *ctitle_stmt;
+                        if (sqlite3_prepare_v2(db, "SELECT title FROM courses WHERE id = ?", -1, &ctitle_stmt, NULL) == SQLITE_OK) {
+                            sqlite3_bind_int(ctitle_stmt, 1, course_id);
+                            if (sqlite3_step(ctitle_stmt) == SQLITE_ROW) {
+                                strncpy(course_title, (const char *)sqlite3_column_text(ctitle_stmt, 0), sizeof(course_title) - 1);
+                            }
+                            sqlite3_finalize(ctitle_stmt);
+                        }
+
                         sqlite3_stmt *notif_stmt;
                         const char *notif_query = "INSERT INTO notifications (user_id, type, message, reference_id) SELECT student_id, 'task_assigned', ?, ? FROM enrollments WHERE course_id = ?";
                         if (sqlite3_prepare_v2(db, notif_query, -1, &notif_stmt, NULL) == SQLITE_OK) {
                             char msg_buf[256];
-                            snprintf(msg_buf, sizeof(msg_buf), "Nuovo task assegnato: %s", title);
+                            snprintf(msg_buf, sizeof(msg_buf), "Nuovo task '%s' assegnato nel corso '%s'", title, course_title);
                             sqlite3_bind_text(notif_stmt, 1, msg_buf, -1, SQLITE_STATIC);
                             sqlite3_bind_int(notif_stmt, 2, task_id);
                             sqlite3_bind_int(notif_stmt, 3, course_id);
@@ -1460,7 +1579,10 @@ static enum MHD_Result request_handler(void *cls,
                 free(err); return MHD_YES;
             }
             sqlite3_stmt *stmt;
-            const char *q = "SELECT id, content, submission_date, status FROM task_submissions WHERE task_id = ? AND student_id = ? ORDER BY submission_date DESC LIMIT 1";
+            const char *q = "SELECT ts.id, ts.content, ts.submission_date, ts.status, ts.grade, ts.teacher_feedback, t.points "
+                            "FROM task_submissions ts "
+                            "JOIN tasks t ON ts.task_id = t.id "
+                            "WHERE ts.task_id = ? AND ts.student_id = ? ORDER BY ts.submission_date DESC LIMIT 1";
             if (sqlite3_prepare_v2(db, q, -1, &stmt, NULL) == SQLITE_OK) {
                 sqlite3_bind_int(stmt, 1, task_id);
                 sqlite3_bind_int(stmt, 2, student_id);
@@ -1472,6 +1594,10 @@ static enum MHD_Result request_handler(void *cls,
                     const char *c = (const char *)sqlite3_column_text(stmt, 1);
                     const char *d = (const char *)sqlite3_column_text(stmt, 2);
                     const char *s = (const char *)sqlite3_column_text(stmt, 3);
+                    json_add_double(jb, "grade", sqlite3_column_double(stmt, 4));
+                    const char *f = (const char *)sqlite3_column_text(stmt, 5);
+                    json_add_string(jb, "teacher_feedback", f ? f : "");
+                    json_add_int(jb, "max_points", sqlite3_column_int(stmt, 6));
                     json_add_string(jb, "content", c ? c : "");
                     json_add_string(jb, "submission_date", d ? d : "");
                     json_add_string(jb, "status", s ? s : "submitted");
@@ -1492,8 +1618,96 @@ static enum MHD_Result request_handler(void *cls,
             }
             return MHD_YES;
         }
+    
+        // PUT /api/submissions/{id}/grade - Docente assegna voto e feedback
+        if (strncmp(url, "/api/submissions/", 17) == 0 && strstr(url, "/grade") != NULL && strcmp(method, "PUT") == 0) {
+            int sub_id = atoi(url + 17);
+            const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
+            if (!auth_header || strncmp(auth_header, "Bearer ", 7) != 0) {
+                char *err = json_error_response("Authorization required");
+                send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+                free(err); return MHD_YES;
+            }
+            int teacher_id = 0;
+            sqlite3_stmt *sstmt;
+            if (sqlite3_prepare_v2(db, "SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')", -1, &sstmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_text(sstmt, 1, auth_header + 7, -1, SQLITE_STATIC);
+                if (sqlite3_step(sstmt) == SQLITE_ROW) teacher_id = sqlite3_column_int(sstmt, 0);
+                sqlite3_finalize(sstmt);
+            }
+            if (teacher_id == 0) {
+                char *err = json_error_response("Invalid session");
+                send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+                free(err); return MHD_YES;
+            }
+            // ... rest of the function
 
-        // DELETE /api/tasks/{id}/submission - ritira la consegna (solo se entro la data)
+        PostData *pdata = (PostData *)*con_cls;
+        if (pdata == NULL || pdata->data == NULL) {
+            char *err = json_error_response("Missing grade data");
+            send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
+            free(err); return MHD_YES;
+        }
+
+        const char *grade_s = json_get_field(pdata->data, "grade");
+        const char *feedback = json_get_field(pdata->data, "feedback");
+        if (!grade_s) {
+            char *err = json_error_response("Grade is required");
+            send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
+            free(err); return MHD_YES;
+        }
+        double grade = atof(grade_s);
+
+        sqlite3_stmt *vstmt;
+        int is_teacher = 0;
+        int max_points = 0;
+        if (sqlite3_prepare_v2(db, "SELECT tasks.teacher_id, tasks.points FROM task_submissions ts JOIN tasks ON ts.task_id = tasks.id WHERE ts.id = ?", -1, &vstmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int(vstmt, 1, sub_id);
+            if (sqlite3_step(vstmt) == SQLITE_ROW) {
+                if (sqlite3_column_int(vstmt, 0) == teacher_id) {
+                    is_teacher = 1;
+                    max_points = sqlite3_column_int(vstmt, 1);
+                }
+            }
+            sqlite3_finalize(vstmt);
+        }
+        if (!is_teacher) {
+            char *err = json_error_response("You are not the teacher for this task");
+            send_json_response(connection, err, MHD_HTTP_FORBIDDEN);
+            free(err); return MHD_YES;
+        }
+
+        if (grade < 0 || (max_points > 0 && grade > max_points)) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "Il voto deve essere compreso tra 0 e %d", max_points);
+            char *err = json_error_response(msg);
+            send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
+            free(err); return MHD_YES;
+        }
+
+        sqlite3_stmt *stmt;
+        const char *q = "UPDATE task_submissions SET grade = ?, teacher_feedback = ?, status = 'graded' WHERE id = ?";
+        if (sqlite3_prepare_v2(db, q, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_double(stmt, 1, grade);
+            sqlite3_bind_text(stmt, 2, feedback ? feedback : "", -1, SQLITE_STATIC);
+            sqlite3_bind_int(stmt, 3, sub_id);
+            if (sqlite3_step(stmt) == SQLITE_DONE) {
+                char *ok = json_success_response("Grade assigned successfully");
+                send_json_response(connection, ok, MHD_HTTP_OK);
+                free(ok);
+            } else {
+                char *err = json_error_response("Failed to update grade");
+                send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+                free(err);
+            }
+            sqlite3_finalize(stmt);
+        } else {
+            char *err = json_error_response("Database error");
+            send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+            free(err);
+        }
+        return MHD_YES;
+    }
         if (strncmp(url, "/api/tasks/", 11) == 0 && strstr(url, "/submission") != NULL && strcmp(method, "DELETE") == 0) {
             int task_id = atoi(url + 11);
             const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
@@ -1635,16 +1849,17 @@ static enum MHD_Result request_handler(void *cls,
                     
                     // Notify teacher
                     sqlite3_stmt *tstmt;
-                    if (sqlite3_prepare_v2(db, "SELECT teacher_id, title FROM tasks WHERE id = ?", -1, &tstmt, NULL) == SQLITE_OK) {
+                    if (sqlite3_prepare_v2(db, "SELECT t.teacher_id, t.title, c.title FROM tasks t JOIN courses c ON t.course_id = c.id WHERE t.id = ?", -1, &tstmt, NULL) == SQLITE_OK) {
                         sqlite3_bind_int(tstmt, 1, task_id);
                         if (sqlite3_step(tstmt) == SQLITE_ROW) {
                             int teacher_id = sqlite3_column_int(tstmt, 0);
                             const char *task_title = (const char *)sqlite3_column_text(tstmt, 1);
+                            const char *course_title = (const char *)sqlite3_column_text(tstmt, 2);
                             
                             sqlite3_stmt *notif_stmt;
                             if (sqlite3_prepare_v2(db, "INSERT INTO notifications (user_id, type, message, reference_id) VALUES (?, 'submission_received', ?, ?)", -1, &notif_stmt, NULL) == SQLITE_OK) {
                                 char msg_buf[256];
-                                snprintf(msg_buf, sizeof(msg_buf), "%s ha consegnato: %s", student_name, task_title);
+                                snprintf(msg_buf, sizeof(msg_buf), "%s ha consegnato il task '%s' nel corso '%s'", student_name, task_title, course_title);
                                 sqlite3_bind_int(notif_stmt, 1, teacher_id);
                                 sqlite3_bind_text(notif_stmt, 2, msg_buf, -1, SQLITE_STATIC);
                                 sqlite3_bind_int(notif_stmt, 3, sub_id);
@@ -1767,56 +1982,59 @@ static enum MHD_Result request_handler(void *cls,
         }
     }
 
-    // GET /api/submissions/{id} - Docente vede risposta singola consegna
-    if (strncmp(url, "/api/submissions/", 17) == 0 && strcmp(method, "GET") == 0) {
-        int sub_id = atoi(url + 17);
-        const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
-        if (!auth_header || strncmp(auth_header, "Bearer ", 7) != 0) {
-            char *err = json_error_response("Authorization required");
-            send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
-            free(err); return MHD_YES;
-        }
-        sqlite3_stmt *stmt;
-        const char *q = "SELECT ts.id, ts.task_id, ts.student_id, ts.content, ts.submission_date, ts.status, "
-                        "u.full_name, u.username, t.title as task_title, t.points "
-                        "FROM task_submissions ts "
-                        "JOIN users u ON ts.student_id = u.id "
-                        "JOIN tasks t ON ts.task_id = t.id "
-                        "WHERE ts.id = ?";
-        if (sqlite3_prepare_v2(db, q, -1, &stmt, NULL) == SQLITE_OK) {
-            sqlite3_bind_int(stmt, 1, sub_id);
-            if (sqlite3_step(stmt) == SQLITE_ROW) {
-                JSONBuilder *jb = json_create();
-                json_start_object(jb);
-                json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
-                json_add_int(jb, "task_id", sqlite3_column_int(stmt, 1));
-                json_add_int(jb, "student_id", sqlite3_column_int(stmt, 2));
-                const char *content = (const char *)sqlite3_column_text(stmt, 3);
-                const char *sub_date = (const char *)sqlite3_column_text(stmt, 4);
-                const char *status = (const char *)sqlite3_column_text(stmt, 5);
-                const char *full_name = (const char *)sqlite3_column_text(stmt, 6);
-                const char *username = (const char *)sqlite3_column_text(stmt, 7);
-                const char *task_title = (const char *)sqlite3_column_text(stmt, 8);
-                json_add_string(jb, "content", content ? content : "");
-                json_add_string(jb, "submission_date", sub_date ? sub_date : "");
-                json_add_string(jb, "status", status ? status : "submitted");
-                json_add_string(jb, "student_name", full_name ? full_name : "");
-                json_add_string(jb, "username", username ? username : "");
-                json_add_string(jb, "task_title", task_title ? task_title : "");
-                json_add_int(jb, "points", sqlite3_column_int(stmt, 9));
-                json_end_object(jb);
-                char *resp = json_get_string(jb);
-                send_json_response(connection, resp, MHD_HTTP_OK);
-                free(resp); json_free(jb);
-            } else {
-                char *err = json_error_response("Submission not found");
-                send_json_response(connection, err, MHD_HTTP_NOT_FOUND);
-                free(err);
+        // GET /api/submissions/{id} - Docente vede risposta singola consegna
+        if (strncmp(url, "/api/submissions/", 17) == 0 && strcmp(method, "GET") == 0) {
+            int sub_id = atoi(url + 17);
+            const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
+            if (!auth_header || strncmp(auth_header, "Bearer ", 7) != 0) {
+                char *err = json_error_response("Authorization required");
+                send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+                free(err); return MHD_YES;
             }
-            sqlite3_finalize(stmt);
+            sqlite3_stmt *stmt;
+            const char *q = "SELECT ts.id, ts.task_id, ts.student_id, ts.content, ts.submission_date, ts.status, "
+                            "u.full_name, u.username, t.title as task_title, t.points, ts.grade, ts.teacher_feedback "
+                            "FROM task_submissions ts "
+                            "JOIN users u ON ts.student_id = u.id "
+                            "JOIN tasks t ON ts.task_id = t.id "
+                            "WHERE ts.id = ?";
+            if (sqlite3_prepare_v2(db, q, -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, sub_id);
+                if (sqlite3_step(stmt) == SQLITE_ROW) {
+                    JSONBuilder *jb = json_create();
+                    json_start_object(jb);
+                    json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                    json_add_int(jb, "task_id", sqlite3_column_int(stmt, 1));
+                    json_add_int(jb, "student_id", sqlite3_column_int(stmt, 2));
+                    const char *content = (const char *)sqlite3_column_text(stmt, 3);
+                    const char *sub_date = (const char *)sqlite3_column_text(stmt, 4);
+                    const char *status = (const char *)sqlite3_column_text(stmt, 5);
+                    const char *full_name = (const char *)sqlite3_column_text(stmt, 6);
+                    const char *username = (const char *)sqlite3_column_text(stmt, 7);
+                    const char *task_title = (const char *)sqlite3_column_text(stmt, 8);
+                    json_add_string(jb, "content", content ? content : "");
+                    json_add_string(jb, "submission_date", sub_date ? sub_date : "");
+                    json_add_string(jb, "status", status ? status : "submitted");
+                    json_add_string(jb, "student_name", full_name ? full_name : "");
+                    json_add_string(jb, "username", username ? username : "");
+                    json_add_string(jb, "task_title", task_title ? task_title : "");
+                    json_add_int(jb, "points", sqlite3_column_int(stmt, 9));
+                    json_add_double(jb, "grade", sqlite3_column_double(stmt, 10));
+                    const char *feedback = (const char *)sqlite3_column_text(stmt, 11);
+                    json_add_string(jb, "teacher_feedback", feedback ? feedback : "");
+                    json_end_object(jb);
+                    char *resp = json_get_string(jb);
+                    send_json_response(connection, resp, MHD_HTTP_OK);
+                    free(resp); json_free(jb);
+                } else {
+                    char *err = json_error_response("Submission not found");
+                    send_json_response(connection, err, MHD_HTTP_NOT_FOUND);
+                    free(err);
+                }
+                sqlite3_finalize(stmt);
+            }
+            return MHD_YES;
         }
-        return MHD_YES;
-    }
 
     // Notifications endpoints
     if (strncmp(url, "/api/notifications", 18) == 0) {
