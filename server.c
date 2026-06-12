@@ -2266,12 +2266,26 @@ static enum MHD_Result request_handler(void *cls,
                     return MHD_YES;
                 }
             } else if (course_id_param) {
-                // Get all tasks for a course (existing logic)
+                // Get tasks for a course, filtered by visibility for students
                 int course_id = atoi(course_id_param);
+                int requester_id = get_auth_user_id(connection);
+                int is_student = requester_id > 0 && user_has_role(requester_id, "student", NULL);
+
                 sqlite3_stmt *stmt;
-                const char *query = "SELECT id, title, description, due_date, points, task_type FROM tasks WHERE course_id = ?";
+                /* For students: only tasks visible to them (no restriction OR explicitly listed).
+                   For teachers/admins: all tasks. */
+                const char *query_student =
+                    "SELECT id, title, description, due_date, points, task_type FROM tasks "
+                    "WHERE course_id = ? "
+                    "AND (NOT EXISTS (SELECT 1 FROM task_visibility WHERE task_id = tasks.id) "
+                    "     OR EXISTS  (SELECT 1 FROM task_visibility WHERE task_id = tasks.id AND student_id = ?))";
+                const char *query_teacher =
+                    "SELECT id, title, description, due_date, points, task_type FROM tasks WHERE course_id = ?";
+
+                const char *query = is_student ? query_student : query_teacher;
                 if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
                     sqlite3_bind_int(stmt, 1, course_id);
+                    if (is_student) sqlite3_bind_int(stmt, 2, requester_id);
                     JSONBuilder *jb = json_create();
                     json_start_object(jb);
                     json_start_array(jb, "tasks");
