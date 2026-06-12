@@ -1131,6 +1131,7 @@ static enum MHD_Result request_handler(void *cls,
                         json_add_string(jb, "full_name", (const char *)sqlite3_column_text(stmt, 2));
                         json_add_double(jb, "progress_percentage", sqlite3_column_double(stmt, 3));
                         json_end_object(jb);
+                        json_append(jb, ",");
                     }
                     json_end_array(jb);
                     json_end_object(jb);
@@ -1178,6 +1179,7 @@ static enum MHD_Result request_handler(void *cls,
                         json_add_string(jb, "email", (const char *)sqlite3_column_text(stmt, 3));
                         json_add_string(jb, "status", (const char *)sqlite3_column_text(stmt, 4));
                         json_end_object(jb);
+                        json_append(jb, ",");
                     }
                     json_end_array(jb);
                     json_end_object(jb);
@@ -1494,6 +1496,7 @@ static enum MHD_Result request_handler(void *cls,
                     json_add_string(jb, "description", (const char *)sqlite3_column_text(stmt, 2));
                     json_add_int(jb, "teacher_id", sqlite3_column_int(stmt, 3));
                     json_end_object(jb);
+                    json_append(jb, ",");
                 }
                 json_end_array(jb);
                 json_end_object(jb);
@@ -1852,6 +1855,7 @@ static enum MHD_Result request_handler(void *cls,
                     json_add_string(jb, "student_name", full_name ? full_name : "");
                     json_add_string(jb, "username", username ? username : "");
                     json_end_object(jb);
+                    json_append(jb, ",");
                 }
                 json_end_array(jb);
                 json_end_object(jb);
@@ -2302,6 +2306,7 @@ static enum MHD_Result request_handler(void *cls,
                         json_add_int(jb, "points", sqlite3_column_int(stmt, 4));
                         json_add_string(jb, "task_type", ttype ? ttype : "");
                         json_end_object(jb);
+                        json_append(jb, ",");
                     }
                     json_end_array(jb);
                     json_end_object(jb);
@@ -2420,6 +2425,7 @@ static enum MHD_Result request_handler(void *cls,
                     json_add_int(jb, "is_read", sqlite3_column_int(stmt, 4));
                     json_add_string(jb, "created_at", (const char *)sqlite3_column_text(stmt, 5));
                     json_end_object(jb);
+                    json_append(jb, ",");
                 }
                 json_end_array(jb);
                 
