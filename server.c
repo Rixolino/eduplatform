@@ -2523,6 +2523,7 @@ static enum MHD_Result request_handler(void *cls,
                 json_add_double(jb, "progress_percentage", sqlite3_column_double(stmt, 6));
                 json_add_string(jb, "status", (const char *)sqlite3_column_text(stmt, 7));
                 json_end_object(jb);
+                json_append(jb, ",");
             }
 
             json_end_array(jb);
