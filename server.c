@@ -2216,22 +2216,41 @@ static enum MHD_Result request_handler(void *cls,
                 // Get single task details
                 int task_id = atoi(task_id_param);
                 sqlite3_stmt *stmt;
-                const char *query = "SELECT id, title, description, due_date, points, task_type FROM tasks WHERE id = ?";
+                const char *query = "SELECT id, title, description, due_date, points, task_type, course_id FROM tasks WHERE id = ?";
                 if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
                     sqlite3_bind_int(stmt, 1, task_id);
                     if (sqlite3_step(stmt) == SQLITE_ROW) {
+                        int fetched_task_id = sqlite3_column_int(stmt, 0);
                         JSONBuilder *jb = json_create();
                         json_start_object(jb);
-                        json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                        json_add_int(jb, "id", fetched_task_id);
                         const char *title = (const char *)sqlite3_column_text(stmt, 1);
                         const char *desc = (const char *)sqlite3_column_text(stmt, 2);
                         const char *due = (const char *)sqlite3_column_text(stmt, 3);
                         const char *ttype = (const char *)sqlite3_column_text(stmt, 5);
+                        int task_course_id = sqlite3_column_int(stmt, 6);
                         json_add_string(jb, "title", title ? title : "");
                         json_add_string(jb, "description", desc ? desc : "");
                         json_add_string(jb, "due_date", due ? due : "");
                         json_add_int(jb, "points", sqlite3_column_int(stmt, 4));
                         json_add_string(jb, "task_type", ttype ? ttype : "");
+                        json_add_int(jb, "course_id", task_course_id);
+                        /* Build visible_to: CSV of student IDs from task_visibility */
+                        char visible_csv[1024] = "";
+                        sqlite3_stmt *vis_stmt;
+                        if (sqlite3_prepare_v2(db, "SELECT student_id FROM task_visibility WHERE task_id = ? ORDER BY student_id", -1, &vis_stmt, NULL) == SQLITE_OK) {
+                            sqlite3_bind_int(vis_stmt, 1, fetched_task_id);
+                            int vfirst = 1;
+                            while (sqlite3_step(vis_stmt) == SQLITE_ROW) {
+                                char sid_buf[16];
+                                snprintf(sid_buf, sizeof(sid_buf), "%d", sqlite3_column_int(vis_stmt, 0));
+                                if (!vfirst) strncat(visible_csv, ",", sizeof(visible_csv) - strlen(visible_csv) - 1);
+                                strncat(visible_csv, sid_buf, sizeof(visible_csv) - strlen(visible_csv) - 1);
+                                vfirst = 0;
+                            }
+                            sqlite3_finalize(vis_stmt);
+                        }
+                        json_add_string(jb, "visible_to", visible_csv);
                         json_end_object(jb);
                         char *resp = json_get_string(jb);
                         send_json_response(connection, resp, MHD_HTTP_OK);
@@ -2464,7 +2483,7 @@ static enum MHD_Result request_handler(void *cls,
 
         const char *query =
             "SELECT u.id, u.username, u.full_name, u.email, "
-            "       c.title AS course_title, e.progress_percentage, e.status "
+            "       c.id AS course_id, c.title AS course_title, e.progress_percentage, e.status "
             "FROM enrollments e "
             "JOIN users u ON e.student_id = u.id "
             "JOIN courses c ON e.course_id = c.id "
@@ -2485,9 +2504,10 @@ static enum MHD_Result request_handler(void *cls,
                 json_add_string(jb, "username", (const char *)sqlite3_column_text(stmt, 1));
                 json_add_string(jb, "full_name", (const char *)sqlite3_column_text(stmt, 2));
                 json_add_string(jb, "email", (const char *)sqlite3_column_text(stmt, 3));
-                json_add_string(jb, "course_title", (const char *)sqlite3_column_text(stmt, 4));
-                json_add_double(jb, "progress_percentage", sqlite3_column_double(stmt, 5));
-                json_add_string(jb, "status", (const char *)sqlite3_column_text(stmt, 6));
+                json_add_int(jb, "course_id", sqlite3_column_int(stmt, 4));
+                json_add_string(jb, "course_title", (const char *)sqlite3_column_text(stmt, 5));
+                json_add_double(jb, "progress_percentage", sqlite3_column_double(stmt, 6));
+                json_add_string(jb, "status", (const char *)sqlite3_column_text(stmt, 7));
                 json_end_object(jb);
             }
 

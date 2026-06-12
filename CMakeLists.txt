@@ -9,23 +9,39 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # on Windows use vcpkg: cmake -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake
 find_package(SQLite3 REQUIRED)
 
+# ── libmicrohttpd ──────────────────────────────────────────────────────────────
+# On Linux/macOS: installed via package manager (apt/brew/nix).
+# On Windows: install via vcpkg (vcpkg install libmicrohttpd:x64-windows).
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(MICROHTTPD REQUIRED libmicrohttpd)
+else()
+    # Fallback for Windows without pkg-config (vcpkg provides find_package support)
+    find_package(unofficial-libmicrohttpd CONFIG QUIET)
+    if(unofficial-libmicrohttpd_FOUND)
+        set(MICROHTTPD_LIBRARIES unofficial::libmicrohttpd::libmicrohttpd)
+    else()
+        message(FATAL_ERROR "libmicrohttpd not found. On Windows run: vcpkg install libmicrohttpd")
+    endif()
+endif()
+
 # ── Eseguibile ────────────────────────────────────────────────────────────────
-add_executable(course_server server_simple.c)
+add_executable(course_server server.c)
 
 # ── Include ────────────────────────────────────────────────────────────────────
 target_include_directories(course_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${SQLite3_INCLUDE_DIRS}
+    ${MICROHTTPD_INCLUDE_DIRS}
 )
 
 # ── Link ──────────────────────────────────────────────────────────────────────
-target_link_libraries(course_server PRIVATE SQLite::SQLite3)
+target_link_libraries(course_server PRIVATE SQLite::SQLite3 ${MICROHTTPD_LIBRARIES})
+target_link_directories(course_server PRIVATE ${MICROHTTPD_LIBRARY_DIRS})
 
 if(WIN32)
-    # Winsock2 richiesto per i raw socket su Windows
     target_link_libraries(course_server PRIVATE ws2_32)
 else()
-    # math library richiesta su POSIX (opzionale ma sicura)
     target_link_libraries(course_server PRIVATE m)
 endif()
 
@@ -53,6 +69,3 @@ else()
     message(STATUS "Platform: POSIX")
 endif()
 
-
-# ── Secondo esempio ────────────────────────────────────────────────────────────
-add_executable(edu_project main.cpp)

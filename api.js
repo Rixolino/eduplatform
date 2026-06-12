@@ -231,6 +231,14 @@ class APIClient {
     return this.request("POST", "/api/tasks", taskData);
   }
 
+  async updateTask(taskId, taskData) {
+    return this.request("PUT", `/api/tasks/${taskId}`, taskData);
+  }
+
+  async deleteTask(taskId) {
+    return this.request("DELETE", `/api/tasks/${taskId}`);
+  }
+
   async getTaskDetails(taskId) {
     return this.request("GET", `/api/tasks?id=${taskId}`);
   }

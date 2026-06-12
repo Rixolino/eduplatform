@@ -610,12 +610,16 @@ class CourseApp {
   }
 
   showTaskCreation(courseId) {
-    // Simple UI switch to show task form
-    document
-      .getElementById("createCourseFormContainer")
-      ?.classList.add("hidden");
-    document.getElementById("taskFormContainer")?.classList.remove("hidden");
+    document.getElementById("createCourseFormContainer")?.classList.add("hidden");
+    const form = document.getElementById("taskForm");
+    form?.reset();
     document.getElementById("taskCourseId").value = courseId;
+    document.getElementById("taskEditId").value = "";
+    document.getElementById("taskFormTitle").textContent = "Crea Task / Quiz";
+    const submitBtn = document.getElementById("taskFormSubmitBtn");
+    if (submitBtn) submitBtn.textContent = "Pubblica Task";
+    document.getElementById("taskFormContainer")?.classList.remove("hidden");
+    this.loadTaskVisibilitySelector(courseId, []);
   }
 
   async handleCreateTask(e) {
@@ -623,22 +627,93 @@ class CourseApp {
     const formEl = document.getElementById("taskForm");
     const formData = new FormData(formEl);
     const taskData = Object.fromEntries(formData);
+    const editId = document.getElementById("taskEditId")?.value || "";
 
-    // FIX: Rimuovi virgolette doppie e accapo per non rompere il JSON del backend C
+    // Raccoglie le checkbox di visibilità
+    const checked = [...formEl.querySelectorAll('input[name="visibility_student"]:checked')];
+    taskData.selected_student_ids = checked.map(cb => cb.value).join(",");
+
     if (taskData.title)
       taskData.title = taskData.title.replace(/["\n\r]/g, " ");
     if (taskData.description)
       taskData.description = taskData.description.replace(/["\n\r]/g, " ");
 
     try {
-      await api.createTask(taskData);
-      this.showAlert("Task creato con successo!", "success");
+      if (editId) {
+        await api.updateTask(editId, taskData);
+        this.showAlert("Task modificato con successo!", "success");
+      } else {
+        await api.createTask(taskData);
+        this.showAlert("Task creato con successo!", "success");
+      }
       formEl.reset();
+      document.getElementById("taskEditId").value = "";
+      document.getElementById("taskFormTitle").textContent = "Crea Task / Quiz";
+      const submitBtn = document.getElementById("taskFormSubmitBtn");
+      if (submitBtn) submitBtn.textContent = "Pubblica Task";
+      document.getElementById("taskVisibilityList").innerHTML = "";
     } catch (error) {
-      this.showAlert(
-        "Errore nella creazione del task: " + error.message,
-        "error",
-      );
+      this.showAlert("Errore: " + error.message, "error");
+    }
+  }
+
+  async loadTaskVisibilitySelector(courseId, selectedIds) {
+    const container = document.getElementById("taskVisibilityList");
+    if (!container) return;
+    container.innerHTML = '<p style="font-size:0.8rem;color:var(--text-light);">Caricamento studenti...</p>';
+    try {
+      const res = await api.getTeacherStudents();
+      const students = (res.students || []).filter(s => String(s.course_id) === String(courseId));
+      if (students.length === 0) {
+        container.innerHTML = '<p style="font-size:0.8rem;color:var(--text-light);">Nessuno studente iscritto a questo corso.</p>';
+        return;
+      }
+      container.innerHTML = students.map(s => `
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.2rem 0;">
+          <input type="checkbox" name="visibility_student" value="${s.id}" ${selectedIds.includes(Number(s.id)) ? "checked" : ""}>
+          <span>${s.full_name || s.username} <small style="color:var(--text-light);">(${s.username})</small></span>
+        </label>
+      `).join("");
+    } catch {
+      container.innerHTML = '<p style="font-size:0.8rem;color:red;">Errore nel caricamento studenti.</p>';
+    }
+  }
+
+  async openEditTask(taskId) {
+    try {
+      const task = await api.getTaskDetails(taskId);
+      // Mostra il form
+      document.querySelectorAll("#teacherDashboard .dashboard-section").forEach(s => s.classList.add("hidden"));
+      document.getElementById("taskFormContainer")?.classList.remove("hidden");
+      // Imposta modalità modifica
+      document.getElementById("taskEditId").value = taskId;
+      document.getElementById("taskFormTitle").textContent = "Modifica Task";
+      const submitBtn = document.getElementById("taskFormSubmitBtn");
+      if (submitBtn) submitBtn.textContent = "Salva Modifiche";
+      document.getElementById("taskCourseId").value = task.course_id;
+      // Pre-compila i campi
+      const form = document.getElementById("taskForm");
+      form.querySelector('[name="title"]').value = task.title || "";
+      form.querySelector('[name="description"]').value = task.description || "";
+      form.querySelector('[name="task_type"]').value = task.task_type || "assignment";
+      form.querySelector('[name="due_date"]').value = task.due_date ? task.due_date.substring(0, 10) : "";
+      form.querySelector('[name="points"]').value = task.points || 0;
+      // Carica visibilità con studenti già selezionati
+      const selectedIds = task.visible_to ? task.visible_to.split(",").filter(Boolean).map(Number) : [];
+      await this.loadTaskVisibilitySelector(task.course_id, selectedIds);
+    } catch (e) {
+      this.showAlert("Errore nel caricamento del task: " + e.message, "error");
+    }
+  }
+
+  async confirmDeleteTask(taskId, taskTitle) {
+    if (!confirm(`Eliminare il task "${taskTitle}"?\nQuesta azione è irreversibile.`)) return;
+    try {
+      await api.deleteTask(taskId);
+      this.showAlert("Task eliminato con successo.", "success");
+      this.showDashboardPage(this.previousDashboardSection || "teacher-dashboard");
+    } catch (e) {
+      this.showAlert("Errore nell'eliminazione: " + e.message, "error");
     }
   }
 
@@ -913,17 +988,40 @@ class CourseApp {
             taskCard.className = "course-card";
             taskCard.style.cursor = "pointer";
             taskCard.onclick = () => this.viewTask(task.id);
-            taskCard.innerHTML = `
-                            <div class="course-content">
-                                <h3 class="course-title">${task.title} <span class="badge" style="font-size: 0.7em; background: var(--bg-color); color: var(--primary-color); float: right;">${task.task_type.toUpperCase()}</span></h3>
-                                <p class="course-description">${task.description || "Nessuna descrizione"}</p>
-                                <div class="course-meta">
-                                    <span><i class="fas fa-calendar"></i> Scadenza: ${task.due_date ? new Date(task.due_date).toLocaleDateString() : "N/D"}</span>
-                                    <span><i class="fas fa-star"></i> Punti: ${task.points || 0}</span>
-                                </div>
-                                ${gradePreview ? `<div class="task-grade-preview">${gradePreview}</div>` : ""}
-                            </div>
-                        `;
+
+            if (isTeacher) {
+              const safeTitle = (task.title || "").replace(/'/g, "\\'");
+              taskCard.innerHTML = `
+                <div class="course-content">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;">
+                    <h3 class="course-title" style="margin:0;">${task.title}
+                      <span class="badge" style="font-size:0.7em;background:var(--bg-color);color:var(--primary-color);">${task.task_type.toUpperCase()}</span>
+                    </h3>
+                    <div style="display:flex;gap:0.35rem;flex-shrink:0;" onclick="event.stopPropagation()">
+                      <button class="btn btn-secondary" style="padding:0.25rem 0.55rem;font-size:0.78rem;"
+                        onclick="app.openEditTask(${task.id})"><i class="fas fa-edit"></i></button>
+                      <button class="btn" style="padding:0.25rem 0.55rem;font-size:0.78rem;background:#e53e3e;color:#fff;border:none;"
+                        onclick="app.confirmDeleteTask(${task.id},'${safeTitle}')"><i class="fas fa-trash"></i></button>
+                    </div>
+                  </div>
+                  <p class="course-description">${task.description || "Nessuna descrizione"}</p>
+                  <div class="course-meta">
+                    <span><i class="fas fa-calendar"></i> Scadenza: ${task.due_date ? new Date(task.due_date).toLocaleDateString() : "N/D"}</span>
+                    <span><i class="fas fa-star"></i> Punti: ${task.points || 0}</span>
+                  </div>
+                </div>`;
+            } else {
+              taskCard.innerHTML = `
+                <div class="course-content">
+                  <h3 class="course-title">${task.title} <span class="badge" style="font-size:0.7em;background:var(--bg-color);color:var(--primary-color);float:right;">${task.task_type.toUpperCase()}</span></h3>
+                  <p class="course-description">${task.description || "Nessuna descrizione"}</p>
+                  <div class="course-meta">
+                    <span><i class="fas fa-calendar"></i> Scadenza: ${task.due_date ? new Date(task.due_date).toLocaleDateString() : "N/D"}</span>
+                    <span><i class="fas fa-star"></i> Punti: ${task.points || 0}</span>
+                  </div>
+                  ${gradePreview ? `<div class="task-grade-preview">${gradePreview}</div>` : ""}
+                </div>`;
+            }
             taskList.appendChild(taskCard);
           });
         } else {
@@ -1161,6 +1259,10 @@ class CourseApp {
             this.showDashboardPage(
               this.previousDashboardSection || "teacher-dashboard",
             );
+        const editBtn = document.getElementById("btnEditTaskTeacher");
+        if (editBtn) editBtn.onclick = () => this.openEditTask(taskId);
+        const deleteBtn = document.getElementById("btnDeleteTaskTeacher");
+        if (deleteBtn) deleteBtn.onclick = () => this.confirmDeleteTask(taskId, task.title);
 
         // Carica la lista delle consegne
         const listContainer = document.getElementById("taskSubmissionsList");
