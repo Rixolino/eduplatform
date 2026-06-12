@@ -197,6 +197,20 @@ CREATE INDEX IF NOT EXISTS idx_quiz_questions_task_id ON quiz_questions(task_id)
 CREATE INDEX IF NOT EXISTS idx_submissions_student_id ON task_submissions(student_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_task_id ON task_submissions(task_id);
 
+-- Visibilita selettiva task: se un task non ha righe qui e' visibile a tutto il corso.
+CREATE TABLE IF NOT EXISTS task_visibility (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(task_id, student_id),
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_visibility_task_id ON task_visibility(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_visibility_student_id ON task_visibility(student_id);
+
 -- Tabella Notifiche
 CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -810,6 +810,40 @@ class CourseApp {
     }
   }
 
+  getGradeTone(grade, maxPoints) {
+    const numericGrade = Number(grade);
+    const numericMax = Number(maxPoints);
+
+    if (!Number.isFinite(numericGrade) || !Number.isFinite(numericMax) || numericMax <= 0) {
+      return { className: "grade-neutral", percent: null };
+    }
+
+    const percent = Math.max(0, Math.min(100, Math.round((numericGrade / numericMax) * 100)));
+
+    if (percent >= 85) return { className: "grade-excellent", percent };
+    if (percent >= 65) return { className: "grade-good", percent };
+    if (percent >= 50) return { className: "grade-mid", percent };
+    return { className: "grade-low", percent };
+  }
+
+  renderGradeBadge(grade, maxPoints, label = "VOTO") {
+    if (grade === undefined || grade === null || grade === "") return "";
+
+    const safeMax = Number(maxPoints) > 0 ? maxPoints : "?";
+    const tone = this.getGradeTone(grade, maxPoints);
+    const title = tone.percent !== null ? ` title="${tone.percent}% del voto massimo"` : "";
+
+    return `<span class="grade-badge ${tone.className}"${title}>
+              <i class="fas fa-star"></i> ${label}: ${grade} / ${safeMax}
+            </span>`;
+  }
+
+  renderPendingGradeBadge() {
+    return `<span class="grade-badge grade-pending">
+              <i class="fas fa-hourglass-half"></i> Voto in attesa
+            </span>`;
+  }
+
   async viewCourse(courseId) {
     console.log("View course:", courseId);
     try {
@@ -848,7 +882,33 @@ class CourseApp {
         const taskList = document.getElementById(taskListId);
         taskList.innerHTML = "";
         if (tasks && tasks.tasks && tasks.tasks.length > 0) {
-          tasks.tasks.forEach((task) => {
+          const taskRows = isTeacher
+            ? tasks.tasks.map((task) => ({ task, submission: null }))
+            : await Promise.all(
+                tasks.tasks.map(async (task) => {
+                  try {
+                    const subRes = await fetch(`/api/tasks/${task.id}/submission`, {
+                      headers: { Authorization: "Bearer " + api.getToken() },
+                    });
+                    if (!subRes.ok) return { task, submission: null };
+                    const subData = await subRes.json();
+                    return {
+                      task,
+                      submission: subData.submitted === "true" ? subData : null,
+                    };
+                  } catch (e) {
+                    return { task, submission: null };
+                  }
+                }),
+              );
+
+          taskRows.forEach(({ task, submission }) => {
+            const gradePreview = submission
+              ? submission.grade !== undefined && submission.grade !== null
+                ? this.renderGradeBadge(submission.grade, submission.max_points || task.points)
+                : this.renderPendingGradeBadge()
+              : "";
+
             const taskCard = document.createElement("div");
             taskCard.className = "course-card";
             taskCard.style.cursor = "pointer";
@@ -861,6 +921,7 @@ class CourseApp {
                                     <span><i class="fas fa-calendar"></i> Scadenza: ${task.due_date ? new Date(task.due_date).toLocaleDateString() : "N/D"}</span>
                                     <span><i class="fas fa-star"></i> Punti: ${task.points || 0}</span>
                                 </div>
+                                ${gradePreview ? `<div class="task-grade-preview">${gradePreview}</div>` : ""}
                             </div>
                         `;
             taskList.appendChild(taskCard);
@@ -1117,9 +1178,15 @@ class CourseApp {
           } else {
             listContainer.innerHTML = submissions
               .map(
-                (s) => `
+                (s) => {
+                  const gradeBadge =
+                    s.grade !== undefined && s.grade !== null
+                      ? this.renderGradeBadge(s.grade, s.points)
+                      : "";
+
+                  return `
                           <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.2s;"
-                               onmouseenter="this.style.background='#f5f5f5'" onmouseleave="this.style.background='white'"
+                               onmouseenter="this.style.background='rgba(255,255,255,0.06)'" onmouseleave="this.style.background='transparent'"
                                onclick="app.viewSubmission(${s.id})">
                               <div style="display: flex; align-items: center; gap: 0.75rem;">
                                   <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--primary-color); display: flex; align-items: center; justify-content: center; color: white;">
@@ -1131,12 +1198,14 @@ class CourseApp {
                                   </div>
                               </div>
                               <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                  <span style="background: #e8f5e9; color: #2e7d32; padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">
+                                  ${gradeBadge}
+                                  <span class="submission-status-pill">
                                       <i class="fas fa-check"></i> ${s.status}
                                   </span>
                                   <i class="fas fa-chevron-right" style="color: var(--text-light);"></i>
                               </div>
-                          </div>`,
+                          </div>`;
+                },
               )
               .join("");
           }
@@ -1189,19 +1258,19 @@ class CourseApp {
           // Costruisci l'info sul voto se presente
           const gradeInfo =
             subData.grade !== undefined && subData.grade !== null
-              ? `<div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #c8e6c9; display: flex; align-items: center; gap: 0.5rem;">
-                 <span style="background: #2e7d32; color: white; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem; font-weight: bold;">VOTO: ${subData.grade}</span>
-                 <span style="color: #555; font-size: 0.9rem; font-style: italic;">${subData.teacher_feedback || "Nessun feedback"}</span>
+              ? `<div class="submission-grade-row">
+                 ${this.renderGradeBadge(subData.grade, subData.max_points || task.points)}
+                 <span class="submission-feedback">${subData.teacher_feedback || "Nessun feedback"}</span>
                </div>`
               : "";
 
           if (!isPastDue) {
             // Entro la scadenza → può ritirare
             subArea.innerHTML = `
-                        <div style="background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;">
-                            <p style="color: #2e7d32; font-weight: 600; margin-bottom: 0.25rem;"><i class="fas fa-check-circle"></i> Task consegnato</p>
-                            <p style="color: #555; font-size: 0.9rem;">Consegnato il: ${subDateStr}</p>
-                            <p style="color: #555; font-size: 0.9rem; margin-top: 0.5rem;"><strong>La tua risposta:</strong> ${subData.content || "(vuoto)"}</p>
+                        <div class="submission-state-card submission-state-success">
+                            <p class="submission-state-title"><i class="fas fa-check-circle"></i> Task consegnato</p>
+                            <p class="submission-state-meta">Consegnato il: ${subDateStr}</p>
+                            <p class="submission-state-text"><strong>La tua risposta:</strong> ${subData.content || "(vuoto)"}</p>
                             ${gradeInfo}
                         </div>
                         <div style="display: flex; justify-content: flex-end;">
@@ -1214,23 +1283,23 @@ class CourseApp {
           } else {
             // Scaduto → solo visualizzazione
             subArea.innerHTML = `
-                        <div style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 1.25rem;">
-                            <p style="color: #1565c0; font-weight: 600;"><i class="fas fa-lock"></i> Task consegnato (scadenza passata)</p>
-                            <p style="color: #555; font-size: 0.9rem;">Consegnato il: ${subDateStr}</p>
-                            <p style="color: #555; font-size: 0.9rem; margin-top: 0.5rem;"><strong>La tua risposta:</strong> ${subData.content || "(vuoto)"}</p>
+                        <div class="submission-state-card submission-state-locked">
+                            <p class="submission-state-title"><i class="fas fa-lock"></i> Task consegnato (scadenza passata)</p>
+                            <p class="submission-state-meta">Consegnato il: ${subDateStr}</p>
+                            <p class="submission-state-text"><strong>La tua risposta:</strong> ${subData.content || "(vuoto)"}</p>
                             ${gradeInfo}
                         </div>`;
           }
         } else {
           // Non ancora consegnato
           if (isPastDue) {
-            subArea.innerHTML = `<div style="background: #fff3e0; border: 1px solid #ffcc80; border-radius: 8px; padding: 1rem; color: #e65100;">
+            subArea.innerHTML = `<div class="submission-state-card submission-state-warning">
                           <i class="fas fa-exclamation-triangle"></i> La scadenza è passata, non puoi più consegnare questo task.
                       </div>`;
           } else {
             subArea.innerHTML = `
                           <h3 style="margin-bottom: 0.75rem;">Invia la tua consegna</h3>
-                          <textarea id="taskSectionSubmissionContent" rows="5" style="width:100%;padding:0.75rem;margin-bottom:1rem;border:1px solid var(--border-color);border-radius:5px;font-size:1rem;" placeholder="Scrivi qui la tua risposta..."></textarea>
+                          <textarea id="taskSectionSubmissionContent" rows="5" class="submission-textarea" placeholder="Scrivi qui la tua risposta..."></textarea>
                           <div style="display:flex;gap:1rem;justify-content:flex-end;">
                               <button class="btn btn-primary" id="btnSubmitTaskSection">Consegna Task</button>
                           </div>`;

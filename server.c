@@ -242,6 +242,129 @@ char *json_get_field(const char *json, const char *field) {
     return NULL;
 }
 
+void run_task_visibility_migration() {
+    const char *sql =
+        "CREATE TABLE IF NOT EXISTS task_visibility ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "task_id INTEGER NOT NULL,"
+        "student_id INTEGER NOT NULL,"
+        "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE(task_id, student_id),"
+        "FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,"
+        "FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE"
+        ");"
+        "CREATE INDEX IF NOT EXISTS idx_task_visibility_task_id ON task_visibility(task_id);"
+        "CREATE INDEX IF NOT EXISTS idx_task_visibility_student_id ON task_visibility(student_id);";
+    char *err = NULL;
+    if (sqlite3_exec(db, sql, NULL, NULL, &err) != SQLITE_OK) {
+        log_message("ERROR: task visibility migration failed: %s", err ? err : "unknown");
+        if (err) sqlite3_free(err);
+    }
+}
+
+int get_auth_user_id(struct MHD_Connection *connection) {
+    const char *auth_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
+    if (!auth_header || strncmp(auth_header, "Bearer ", 7) != 0) return 0;
+
+    int user_id = 0;
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, "SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')", -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, auth_header + 7, -1, SQLITE_STATIC);
+        if (sqlite3_step(stmt) == SQLITE_ROW) user_id = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+    }
+    return user_id;
+}
+
+int user_has_role(int user_id, const char *role_a, const char *role_b) {
+    char role[32] = "";
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, "SELECT role FROM users WHERE id = ?", -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, user_id);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char *role_text = (const char *)sqlite3_column_text(stmt, 0);
+            if (role_text) strncpy(role, role_text, sizeof(role) - 1);
+        }
+        sqlite3_finalize(stmt);
+    }
+    return (role_a && strcmp(role, role_a) == 0) || (role_b && strcmp(role, role_b) == 0);
+}
+
+int teacher_owns_task(int user_id, int task_id) {
+    int allowed = 0;
+    sqlite3_stmt *stmt;
+    const char *q = "SELECT 1 FROM tasks WHERE id = ? AND teacher_id = ?";
+    if (sqlite3_prepare_v2(db, q, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, task_id);
+        sqlite3_bind_int(stmt, 2, user_id);
+        allowed = (sqlite3_step(stmt) == SQLITE_ROW);
+        sqlite3_finalize(stmt);
+    }
+    return allowed || user_has_role(user_id, "admin", NULL);
+}
+
+int teacher_owns_course(int user_id, int course_id) {
+    int allowed = 0;
+    sqlite3_stmt *stmt;
+    const char *q = "SELECT 1 FROM courses WHERE id = ? AND teacher_id = ?";
+    if (sqlite3_prepare_v2(db, q, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, course_id);
+        sqlite3_bind_int(stmt, 2, user_id);
+        allowed = (sqlite3_step(stmt) == SQLITE_ROW);
+        sqlite3_finalize(stmt);
+    }
+    return allowed || user_has_role(user_id, "admin", NULL);
+}
+
+int task_visible_to_student(int task_id, int student_id) {
+    int visible = 0;
+    sqlite3_stmt *stmt;
+    const char *q =
+        "SELECT CASE "
+        "WHEN NOT EXISTS (SELECT 1 FROM task_visibility WHERE task_id = ?) THEN 1 "
+        "WHEN EXISTS (SELECT 1 FROM task_visibility WHERE task_id = ? AND student_id = ?) THEN 1 "
+        "ELSE 0 END";
+    if (sqlite3_prepare_v2(db, q, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, task_id);
+        sqlite3_bind_int(stmt, 2, task_id);
+        sqlite3_bind_int(stmt, 3, student_id);
+        if (sqlite3_step(stmt) == SQLITE_ROW) visible = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+    }
+    return visible;
+}
+
+void save_task_visibility_from_csv(int task_id, const char *csv) {
+    sqlite3_stmt *del_stmt;
+    if (sqlite3_prepare_v2(db, "DELETE FROM task_visibility WHERE task_id = ?", -1, &del_stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(del_stmt, 1, task_id);
+        sqlite3_step(del_stmt);
+        sqlite3_finalize(del_stmt);
+    }
+
+    if (!csv || strlen(csv) == 0) return;
+
+    char *copy = strdup(csv);
+    char *token = strtok(copy, ",");
+    sqlite3_stmt *stmt;
+    const char *q = "INSERT OR IGNORE INTO task_visibility (task_id, student_id) VALUES (?, ?)";
+    if (sqlite3_prepare_v2(db, q, -1, &stmt, NULL) == SQLITE_OK) {
+        while (token) {
+            int student_id = atoi(token);
+            if (student_id > 0) {
+                sqlite3_reset(stmt);
+                sqlite3_clear_bindings(stmt);
+                sqlite3_bind_int(stmt, 1, task_id);
+                sqlite3_bind_int(stmt, 2, student_id);
+                sqlite3_step(stmt);
+            }
+            token = strtok(NULL, ",");
+        }
+        sqlite3_finalize(stmt);
+    }
+    free(copy);
+}
+
 // Log activity to database
 void log_activity(int user_id, const char *action, const char *resource_type, int resource_id, const char *details) {
     sqlite3_stmt *stmt;
@@ -1020,8 +1143,55 @@ static enum MHD_Result request_handler(void *cls,
                 }
             }
 
+            // GET enrolled students for a course (teacher only)
+            if (strcmp(method, "GET") == 0 && strstr(url, "/students") != NULL) {
+                int user_id = get_auth_user_id(connection);
+                if (user_id == 0) {
+                    char *err = json_error_response("Authorization required");
+                    send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+                    free(err);
+                    return MHD_YES;
+                }
+                if (!teacher_owns_course(user_id, course_id)) {
+                    char *err = json_error_response("You are not the teacher for this course");
+                    send_json_response(connection, err, MHD_HTTP_FORBIDDEN);
+                    free(err);
+                    return MHD_YES;
+                }
+
+                sqlite3_stmt *stmt;
+                const char *query = "SELECT u.id, u.username, u.full_name, u.email, e.status "
+                                    "FROM enrollments e "
+                                    "JOIN users u ON e.student_id = u.id "
+                                    "WHERE e.course_id = ? AND e.status = 'enrolled' "
+                                    "ORDER BY u.full_name, u.username";
+                if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                    sqlite3_bind_int(stmt, 1, course_id);
+                    JSONBuilder *jb = json_create();
+                    json_start_object(jb);
+                    json_start_array(jb, "students");
+                    while (sqlite3_step(stmt) == SQLITE_ROW) {
+                        json_start_object(jb);
+                        json_add_int(jb, "id", sqlite3_column_int(stmt, 0));
+                        json_add_string(jb, "username", (const char *)sqlite3_column_text(stmt, 1));
+                        json_add_string(jb, "full_name", (const char *)sqlite3_column_text(stmt, 2));
+                        json_add_string(jb, "email", (const char *)sqlite3_column_text(stmt, 3));
+                        json_add_string(jb, "status", (const char *)sqlite3_column_text(stmt, 4));
+                        json_end_object(jb);
+                    }
+                    json_end_array(jb);
+                    json_end_object(jb);
+                    char *resp = json_get_string(jb);
+                    send_json_response(connection, resp, MHD_HTTP_OK);
+                    free(resp);
+                    json_free(jb);
+                    sqlite3_finalize(stmt);
+                    return MHD_YES;
+                }
+            }
+
             // GET specific course
-            if (strcmp(method, "GET") == 0 && strstr(url, "/buddies") == NULL) {
+            if (strcmp(method, "GET") == 0 && strstr(url, "/buddies") == NULL && strstr(url, "/students") == NULL) {
                 sqlite3_stmt *stmt;
                 const char *query = "SELECT id, title, description, teacher_id, category, difficulty_level, duration_hours, num_lessons FROM courses WHERE id = ?";
                 if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
@@ -1439,6 +1609,7 @@ static enum MHD_Result request_handler(void *cls,
             char *type = json_get_field(pdata->data, "task_type");
             char *due_date = json_get_field(pdata->data, "due_date");
             char *points_s = json_get_field(pdata->data, "points");
+            char *visible_to_s = json_get_field(pdata->data, "selected_student_ids");
 
             if (!title || !course_id_s || !type) {
                 char *err = json_error_response("Missing required fields");
@@ -1447,6 +1618,20 @@ static enum MHD_Result request_handler(void *cls,
             } else {
                 int course_id = atoi(course_id_s);
                 int points = points_s ? atoi(points_s) : 0;
+                if (!teacher_owns_course(author_id, course_id)) {
+                    char *err = json_error_response("You are not the teacher for this course");
+                    send_json_response(connection, err, MHD_HTTP_FORBIDDEN);
+                    free(err);
+                    if (title) free(title);
+                    if (description) free(description);
+                    if (course_id_s) free(course_id_s);
+                    if (type) free(type);
+                    if (due_date) free(due_date);
+                    if (points_s) free(points_s);
+                    if (visible_to_s) free(visible_to_s);
+                    free(pdata->data); free(pdata); *con_cls = NULL;
+                    return MHD_YES;
+                }
                 sqlite3_stmt *stmt;
                 const char *query = "INSERT INTO tasks (course_id, teacher_id, title, description, due_date, points, task_type) VALUES (?, ?, ?, ?, ?, ?, ?)";
                 if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
@@ -1460,6 +1645,7 @@ static enum MHD_Result request_handler(void *cls,
 
                     if (sqlite3_step(stmt) == SQLITE_DONE) {
                         int task_id = (int)sqlite3_last_insert_rowid(db);
+                        save_task_visibility_from_csv(task_id, visible_to_s);
                         
                         // Notify students
                         char course_title[128] = "Corso";
@@ -1473,13 +1659,15 @@ static enum MHD_Result request_handler(void *cls,
                         }
 
                         sqlite3_stmt *notif_stmt;
-                        const char *notif_query = "INSERT INTO notifications (user_id, type, message, reference_id) SELECT student_id, 'task_assigned', ?, ? FROM enrollments WHERE course_id = ?";
+                        const char *notif_query = (visible_to_s && strlen(visible_to_s) > 0)
+                            ? "INSERT INTO notifications (user_id, type, message, reference_id) SELECT student_id, 'task_assigned', ?, ? FROM task_visibility WHERE task_id = ?"
+                            : "INSERT INTO notifications (user_id, type, message, reference_id) SELECT student_id, 'task_assigned', ?, ? FROM enrollments WHERE course_id = ?";
                         if (sqlite3_prepare_v2(db, notif_query, -1, &notif_stmt, NULL) == SQLITE_OK) {
                             char msg_buf[256];
                             snprintf(msg_buf, sizeof(msg_buf), "Nuovo task '%s' assegnato nel corso '%s'", title, course_title);
                             sqlite3_bind_text(notif_stmt, 1, msg_buf, -1, SQLITE_STATIC);
                             sqlite3_bind_int(notif_stmt, 2, task_id);
-                            sqlite3_bind_int(notif_stmt, 3, course_id);
+                            sqlite3_bind_int(notif_stmt, 3, (visible_to_s && strlen(visible_to_s) > 0) ? task_id : course_id);
                             sqlite3_step(notif_stmt);
                             sqlite3_finalize(notif_stmt);
                         }
@@ -1507,7 +1695,125 @@ static enum MHD_Result request_handler(void *cls,
             if (type) free(type);
             if (due_date) free(due_date);
             if (points_s) free(points_s);
+            if (visible_to_s) free(visible_to_s);
             free(pdata->data); free(pdata); *con_cls = NULL;
+            return MHD_YES;
+        }
+
+        // PUT /api/tasks/{id} - Docente modifica task
+        if (strncmp(url, "/api/tasks/", 11) == 0 && strstr(url + 11, "/") == NULL && strcmp(method, "PUT") == 0) {
+            int task_id = atoi(url + 11);
+            PostData *pdata = (PostData *)*con_cls;
+            if (pdata == NULL) {
+                pdata = (PostData *)malloc(sizeof(PostData));
+                pdata->data = (char *)malloc(MAX_POST_SIZE);
+                pdata->size = 0;
+                pdata->capacity = MAX_POST_SIZE;
+                *con_cls = (void *)pdata;
+                return MHD_YES;
+            }
+            if (*upload_data_size > 0) {
+                size_t to_copy = (*upload_data_size < (pdata->capacity - pdata->size)) ? *upload_data_size : (pdata->capacity - pdata->size - 1);
+                memcpy(pdata->data + pdata->size, upload_data, to_copy);
+                pdata->size += to_copy;
+                pdata->data[pdata->size] = '\0';
+                *upload_data_size = 0;
+                return MHD_YES;
+            }
+
+            int user_id = get_auth_user_id(connection);
+            if (user_id == 0) {
+                char *err = json_error_response("Authorization required");
+                send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+                free(err);
+                free(pdata->data); free(pdata); *con_cls = NULL;
+                return MHD_YES;
+            }
+            if (!teacher_owns_task(user_id, task_id)) {
+                char *err = json_error_response("You are not the teacher for this task");
+                send_json_response(connection, err, MHD_HTTP_FORBIDDEN);
+                free(err);
+                free(pdata->data); free(pdata); *con_cls = NULL;
+                return MHD_YES;
+            }
+
+            char *title = json_get_field(pdata->data, "title");
+            char *description = json_get_field(pdata->data, "description");
+            char *type = json_get_field(pdata->data, "task_type");
+            char *due_date = json_get_field(pdata->data, "due_date");
+            char *points_s = json_get_field(pdata->data, "points");
+            char *visible_to_s = json_get_field(pdata->data, "selected_student_ids");
+
+            if (!title || !type) {
+                char *err = json_error_response("Missing required fields");
+                send_json_response(connection, err, MHD_HTTP_BAD_REQUEST);
+                free(err);
+            } else {
+                int points = points_s ? atoi(points_s) : 0;
+                sqlite3_stmt *stmt;
+                const char *q = "UPDATE tasks SET title = ?, description = ?, due_date = ?, points = ?, task_type = ? WHERE id = ?";
+                if (sqlite3_prepare_v2(db, q, -1, &stmt, NULL) == SQLITE_OK) {
+                    sqlite3_bind_text(stmt, 1, title, -1, SQLITE_STATIC);
+                    sqlite3_bind_text(stmt, 2, description ? description : "", -1, SQLITE_STATIC);
+                    sqlite3_bind_text(stmt, 3, due_date ? due_date : "", -1, SQLITE_STATIC);
+                    sqlite3_bind_int(stmt, 4, points);
+                    sqlite3_bind_text(stmt, 5, type, -1, SQLITE_STATIC);
+                    sqlite3_bind_int(stmt, 6, task_id);
+                    if (sqlite3_step(stmt) == SQLITE_DONE) {
+                        save_task_visibility_from_csv(task_id, visible_to_s);
+                        char *ok = json_success_response("Task updated successfully");
+                        send_json_response(connection, ok, MHD_HTTP_OK);
+                        free(ok);
+                    } else {
+                        char *err = json_error_response("Failed to update task");
+                        send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+                        free(err);
+                    }
+                    sqlite3_finalize(stmt);
+                }
+            }
+
+            if (title) free(title);
+            if (description) free(description);
+            if (type) free(type);
+            if (due_date) free(due_date);
+            if (points_s) free(points_s);
+            if (visible_to_s) free(visible_to_s);
+            free(pdata->data); free(pdata); *con_cls = NULL;
+            return MHD_YES;
+        }
+
+        // DELETE /api/tasks/{id} - Docente cancella task
+        if (strncmp(url, "/api/tasks/", 11) == 0 && strstr(url + 11, "/") == NULL && strcmp(method, "DELETE") == 0) {
+            int task_id = atoi(url + 11);
+            int user_id = get_auth_user_id(connection);
+            if (user_id == 0) {
+                char *err = json_error_response("Authorization required");
+                send_json_response(connection, err, MHD_HTTP_UNAUTHORIZED);
+                free(err);
+                return MHD_YES;
+            }
+            if (!teacher_owns_task(user_id, task_id)) {
+                char *err = json_error_response("You are not the teacher for this task");
+                send_json_response(connection, err, MHD_HTTP_FORBIDDEN);
+                free(err);
+                return MHD_YES;
+            }
+
+            sqlite3_stmt *stmt;
+            if (sqlite3_prepare_v2(db, "DELETE FROM tasks WHERE id = ?", -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, task_id);
+                if (sqlite3_step(stmt) == SQLITE_DONE) {
+                    char *ok = json_success_response("Task deleted successfully");
+                    send_json_response(connection, ok, MHD_HTTP_OK);
+                    free(ok);
+                } else {
+                    char *err = json_error_response("Failed to delete task");
+                    send_json_response(connection, err, MHD_HTTP_INTERNAL_SERVER_ERROR);
+                    free(err);
+                }
+                sqlite3_finalize(stmt);
+            }
             return MHD_YES;
         }
 
@@ -2233,6 +2539,7 @@ int main(int argc, char *argv[]) {
     if (!initialize_database_from_schema("schema.sql")) {
         log_message("WARNING: Database schema may not be initialized. Check schema.sql and permissions.");
     }
+    run_task_visibility_migration();
 
     // Creare il server HTTP
     struct MHD_Daemon *daemon;
